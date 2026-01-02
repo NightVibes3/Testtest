@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Ultimate No-Fail Build)
+name: CAPlayground V6 (Universal Survival Build)
 
 on:
   push:
@@ -24,11 +24,11 @@ jobs:
             echo "📂 Using existing folder."
           fi
 
-      # 2. STRIP PROJECT ERRORS (Fixes Google & Pod Crashes)
+      # 2. STRIP PROJECT ERRORS (Google & Pod Fixes)
       - name: Strip Project Errors
         run: |
           cd ios
-          echo "🚫 Fixing Missing File References..."
+          echo "🚫 Removing Missing References..."
           # Fix the Missing GoogleService-Info.plist error [web:56]
           find . -name "project.pbxproj" -exec sed -i '' '/GoogleService-Info.plist/d' {} + || true
           # Fix the Pod Manifest errors [memory:32]
@@ -39,18 +39,16 @@ jobs:
       - name: Apply Master Patch
         run: |
           cd ios
-          echo "🎨 Applying Stable Identity & Extension Patches..."
+          echo "🎨 Applying Extension Patches..."
           
-          # A. FIX .ZIP BUG (The basic fix) [memory:21]
+          # A. FIX .ZIP BUG [memory:21]
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
           find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
           
-          # B. FORCE .TENDIES NAME (Stable Surgeon) [memory:43]
-          # Overrides website names to ensure you get .tendies every time
+          # B. FORCE .TENDIES NAME [memory:43]
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/suggestedFilename/@"export.tendies"/g' {} + || true
 
-          # C. IDENTITY & PERMISSIONS (Files App & Custom ID) [memory:18]
-          # Note: We NO LONGER delete InfoPlist.strings to prevent "File Not Found" errors.
+          # C. IDENTITY & PERMISSIONS [memory:18]
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" || true
@@ -59,15 +57,14 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" || true
           fi
 
-      # 4. BUILD APP (Stable Lite Mode)
+      # 4. BUILD APP (Universal Survival Mode)
       - name: Build App
         run: |
           cd ios
-          # Auto-detect workspace and scheme to handle plural "s" issues [conversation_history:44]
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
           
-          echo "🚀 Building $WORKSPACE with Scheme $SCHEME..."
+          echo "🚀 Building $WORKSPACE (Survival Mode)..."
           
           xcodebuild build \
             -workspace "$WORKSPACE" \
@@ -79,7 +76,10 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            GCC_GENERATE_DEBUGGING_SYMBOLS=NO
+            GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            ENABLE_BITCODE=NO \
+            ONLY_ACTIVE_ARCH=NO
 
       # 5. PACKAGE IPA
       - name: Package IPA
@@ -94,7 +94,6 @@ jobs:
           fi
           
           cp -r "$APP_PATH" Payload/
-          # Clean signature for SideStore/AltStore [memory:16]
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
           
           zip -r -y -X "CAPlayground_Final.ipa" Payload
@@ -104,5 +103,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-Perfect-IPA
+          name: CAPlayground-Survival-IPA
           path: ios/CAPlayground_Final.ipa
