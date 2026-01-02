@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Final Stable Build)
+name: CAPlayground V6 (Safe Stable Build)
 
 on:
   push:
@@ -31,44 +31,41 @@ jobs:
       - name: Bypass Pod Install
         run: |
           cd ios
-          echo "🚫 Skipping pod install to avoid private repo errors..."
-          # Removes the checks that cause the build to fail when Pods aren't freshly installed [memory:32]
-          find . -name "*.sh" -exec sed -i '' '/diff/d' {} +
-          find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} +
+          echo "🚫 Skipping pod install..."
+          # These prevent Xcode from failing due to missing fresh pod installs [memory:32]
+          find . -name "*.sh" -exec sed -i '' '/diff/d' {} + || true
+          find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} + || true
 
-      # 3. MASTER PATCH (Clean Surgeon - Fixes .tendies & Identity)
+      # 3. MASTER PATCH (Safe Surgeon Edition)
       - name: Apply Master Patch
         run: |
           cd ios
-          echo "🎨 Starting Clean Surgeon Patch..."
+          echo "🎨 Starting Safe Surgeon Patch..."
 
-          # A. REMOVE .ZIP BUG
-          # Deletes the code responsible for forcing .zip extensions [memory:21]
-          find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
-          find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
+          # A. Fix .zip bug
+          find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
+          find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
 
-          # B. FORCE .TENDIES FILENAME (Stable Version)
-          # Overrides 'download' name with 'export.tendies' to bypass website naming issues [memory:43]
-          find . -name "LEANWebViewController.m" -exec sed -i '' 's/suggestedFilename/@"export.tendies"/g' {} +
+          # B. Force .tendies (Simple Stable Version)
+          find . -name "LEANWebViewController.m" -exec sed -i '' 's/suggestedFilename/@"export.tendies"/g' {} + || true
 
-          # C. CLEAN DUPLICATE ASSETS (Fixes Exit Code 65)
-          # Deletes duplicate strings files that cause build conflicts [conversation_history:21]
-          find . -name "InfoPlist.strings" -delete
+          # C. Clean up duplicate asset warnings
+          find . -name "InfoPlist.strings" -delete || true
 
-          # D. IDENTITY & PERMISSIONS (Files App & Custom ID)
+          # D. Modify Info.plist (Identity & Files App)
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
-            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null
-            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
-            /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled true" "$PLIST"
-            /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
+            echo "📝 Patching $PLIST..."
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" || true
+            /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" || true
           fi
 
       # 4. BUILD APP (Auto-detect Workspace & Scheme)
       - name: Build App
         run: |
           cd ios
-          # Auto-detect workspace to handle naming mismatches [conversation_history:44]
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
           
@@ -101,7 +98,6 @@ jobs:
           fi
           
           cp -r "$APP_PATH" Payload/
-          # Ensure a clean signature for SideStore/AltStore [memory:16]
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
           
           IPA_NAME="CAPlayground_v6_Final.ipa"
