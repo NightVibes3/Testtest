@@ -1,4 +1,4 @@
-name: Build iOS IPA
+name: Build Fixed Tendies and CA App
 
 on:
   push:
@@ -15,12 +15,26 @@ jobs:
         with:
           lfs: true
 
-      # 1. Extract the archive (this provides the 'ios' folder with 'Pods' already inside)
+      # 1. Extract the source code
       - name: Extract Source Code
         run: tar -xzf ios_source.tar.gz
 
-      # 2. Skip 'pod install' and go straight to building
-      # We just need to make sure the build environment is ready
+      # 2. PATCH THE SOURCE CODE
+      # This deletes the line that adds .zip and ensures .tendies / .ca are preserved
+      - name: Patch Download Logic
+        run: |
+          cd ios
+          echo "Patching source to fix .tendies and .ca renaming..."
+          
+          # Remove the 'zip' extension forcing in the main webview controller
+          find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
+          
+          # Remove the 'zip' extension forcing in the JS Bridge
+          find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
+          
+          echo "Source code patched."
+
+      # 3. Build the App
       - name: Build App
         run: |
           cd ios
@@ -34,19 +48,17 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      # 3. Package the IPA
+      # 4. Package the IPA
       - name: Package IPA
         run: |
           cd ios
           mkdir Payload
-          # Move the compiled app into Payload
           cp -r build/Build/Products/Release-iphoneos/CAPlaygrounds.app Payload/
-          # Create the IPA (preserving symlinks)
           zip -r -y CAPlaygrounds.ipa Payload
 
-      # 4. Upload the IPA
-      - name: Upload IPA
+      # 5. Upload the Result
+      - name: Upload Fixed IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlaygrounds-IPA
+          name: Fixed-Tendies-IPA
           path: ios/CAPlaygrounds.ipa
