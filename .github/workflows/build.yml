@@ -13,17 +13,20 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          lfs: true
-          fetch-depth: 0
+          lfs: true  # Ensures large files like your tar.gz are downloaded correctly
 
-      # FIX: Remove the problematic 'git@github.com' source line from Podfile
+      - name: Extract Source Code
+        run: |
+          # This creates the 'ios' directory found in your archive
+          tar -xzf ios_source.tar.gz
+          ls -la  # Debug: confirms 'ios' folder now exists
+
       - name: Fix Podfile Source
         run: |
           cd ios
-          # This command deletes the line starting with 'source' that contains 'gonative-specs'
+          # Median apps often include a private 'gonative-specs' source.
+          # This line removes it so 'pod install' uses the public repo instead.
           sed -i '' '/gonative-specs/d' Podfile
-          # Optional: Print Podfile to verify
-          cat Podfile
 
       - name: Install Pods
         run: |
@@ -33,13 +36,13 @@ jobs:
       - name: Build App
         run: |
           cd ios
+          # Build the workspace using the scheme identified in your logs
           xcodebuild build \
             -workspace "CAPlaygrounds.xcworkspace" \
             -scheme "CAPlaygrounds" \
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath build/ \
-            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
@@ -47,7 +50,9 @@ jobs:
         run: |
           cd ios
           mkdir Payload
+          # Copy the .app bundle created by xcodebuild into the Payload folder
           cp -r build/Build/Products/Release-iphoneos/CAPlaygrounds.app Payload/
+          # Create the .ipa zip archive preserving symbolic links
           zip -r -y CAPlaygrounds.ipa Payload
 
       - name: Upload IPA
