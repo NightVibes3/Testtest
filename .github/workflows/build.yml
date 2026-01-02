@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Stable Hard-Force)
+name: CAPlayground V6 (Final Stable Build)
 
 on:
   push:
@@ -32,31 +32,33 @@ jobs:
         run: |
           cd ios
           echo "🚫 Skipping pod install to avoid private repo errors..."
+          # Removes the checks that cause the build to fail when Pods aren't freshly installed [memory:32]
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} +
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} +
 
-      # 3. MASTER PATCH (Stable Identity & Tendies Force)
+      # 3. MASTER PATCH (Clean Surgeon - Fixes .tendies & Identity)
       - name: Apply Master Patch
         run: |
           cd ios
-          echo "🎨 Starting Stable Identity Shift..."
+          echo "🎨 Starting Clean Surgeon Patch..."
 
           # A. REMOVE .ZIP BUG
+          # Deletes the code responsible for forcing .zip extensions [memory:21]
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
           find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
 
-          # B. SMART TENDIES FORCE
-          # This ensures that if the file isn't .tendies, it gets slapped with the extension [memory:43]
-          find . -name "LEANWebViewController.m" -exec sed -i '' 's/suggestedFilename/([[suggestedFilename pathExtension] isEqualToString:@"tendies"] ? suggestedFilename : [suggestedFilename stringByAppendingPathExtension:@"tendies"])/g' {} +
+          # B. FORCE .TENDIES FILENAME (Stable Version)
+          # Overrides 'download' name with 'export.tendies' to bypass website naming issues [memory:43]
+          find . -name "LEANWebViewController.m" -exec sed -i '' 's/suggestedFilename/@"export.tendies"/g' {} +
 
-          # C. FIX DUPLICATE FILES (Fixes Exit Code 65 Warning)
-          # Deletes duplicate InfoPlist.strings that cause build phase conflicts [conversation_history:21]
+          # C. CLEAN DUPLICATE ASSETS (Fixes Exit Code 65)
+          # Deletes duplicate strings files that cause build conflicts [conversation_history:21]
           find . -name "InfoPlist.strings" -delete
 
-          # D. Modify Info.plist (Identity & Files App Support)
+          # D. IDENTITY & PERMISSIONS (Files App & Custom ID)
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
-            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled true" "$PLIST"
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
@@ -66,6 +68,7 @@ jobs:
       - name: Build App
         run: |
           cd ios
+          # Auto-detect workspace to handle naming mismatches [conversation_history:44]
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
           
@@ -98,9 +101,10 @@ jobs:
           fi
           
           cp -r "$APP_PATH" Payload/
+          # Ensure a clean signature for SideStore/AltStore [memory:16]
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
           
-          IPA_NAME="CAPlayground_v6_Stable.ipa"
+          IPA_NAME="CAPlayground_v6_Final.ipa"
           zip -r -y -X "$IPA_NAME" Payload
 
           echo "IPA_NAME=$IPA_NAME" >> $GITHUB_ENV
@@ -109,5 +113,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-Stable-IPA
+          name: CAPlayground-Final-IPA
           path: ios/${{ env.IPA_NAME }}
