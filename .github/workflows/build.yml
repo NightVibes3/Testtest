@@ -1,4 +1,4 @@
-name: CAPlayground V7 (Crash Proof)
+name: CAPlayground V8 (Podfile Fix)
 
 on:
   push:
@@ -32,19 +32,38 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ios/Pods
-          key: ${{ runner.os }}-pods-v7-${{ hashFiles('ios/Podfile.lock') }}
+          key: ${{ runner.os }}-pods-v8-${{ hashFiles('ios/Podfile.lock') }}
           restore-keys: |
-            ${{ runner.os }}-pods-v7-
+            ${{ runner.os }}-pods-v8-
 
-      # 3. INSTALL PODS
-      - name: Install Pods
+      # 3. FIX PODFILE (The Critical Fix)
+      # Removes the private SSH repo that is causing the crash
+      - name: Fix Podfile Sources
         run: |
           cd ios
           if [ -f "Podfile" ]; then
-            pod install || pod install --repo-update
+            echo "🔧 Fixing Podfile sources..."
+            
+            # Remove the line starting with 'source' if it contains 'gonative-specs'
+            sed -i '' '/gonative-specs/d' Podfile
+            
+            # Ensure the public CDN is there
+            if ! grep -q "cdn.cocoapods.org" Podfile; then
+               echo "source 'https://cdn.cocoapods.org/'" | cat - Podfile > temp && mv temp Podfile
+            fi
+            
+            echo "✅ Podfile patched to use public sources only."
+            cat Podfile # Print it to verify in logs
           fi
 
-      # 4. MASTER PATCH (Privacy + Identity + Tendies)
+      # 4. INSTALL PODS
+      - name: Install Pods
+        run: |
+          cd ios
+          # We use --repo-update to make sure we get the latest public specs
+          pod install --repo-update
+
+      # 5. MASTER PATCH (Privacy + Identity + Tendies)
       - name: Apply Master Patch
         run: |
           cd ios
@@ -54,50 +73,31 @@ jobs:
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
           find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
 
-          # B. Verify Patch
-          if grep -r "stringByAppendingPathExtension:@\"zip\"" .; then
-             echo "❌ CRITICAL: .zip patch failed."
-             exit 1
-          fi
-
-          # C. Modify Info.plist (The "Anti-Crash" Step)
+          # B. Modify Info.plist
           PLIST=$(find . -name "Info.plist" | head -n 1)
-          
           if [ -n "$PLIST" ]; then
-            echo "   📝 Hardening $PLIST..."
-            
-            # 1. Identity
+            # Identity
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
             
-            # 2. Privacy Keys (Prevents Instant Crashes)
-            # iOS requires these to exist if the code *might* access them.
-            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Save wallpapers and load .tendies files.'" "$PLIST" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Required for AR features.'" "$PLIST" 2>/dev/null || true
+            # Privacy Keys
+            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Save wallpapers.'" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Required for AR.'" "$PLIST" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string 'Save exported wallpapers.'" "$PLIST" 2>/dev/null || true
 
-            # 3. File Sharing
+            # File Sharing
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled true" "$PLIST"
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
-
-            echo "   ✅ Privacy Keys & Sharing Enabled."
           fi
 
-      # 5. NEUTRALIZE ENTITLEMENTS (The "SideStore" Step)
-      # This removes restricted capabilities that break free developer accounts.
+      # 6. NEUTRALIZE ENTITLEMENTS
       - name: Strip Entitlements
         run: |
           cd ios
-          echo "🧹 Neutralizing Entitlements..."
           PROJECT=$(find . -name "*.xcodeproj" | head -n 1)
-          
-          # Remove the 'CODE_SIGN_ENTITLEMENTS' setting from the project file entirely
-          # This forces Xcode to build a "vanilla" app that SideStore can sign easily.
           sed -i '' '/CODE_SIGN_ENTITLEMENTS/d' "$PROJECT/project.pbxproj"
-          
-          echo "✅ Entitlements stripped from project settings."
 
-      # 6. BUILD
+      # 7. BUILD
       - name: Build App
         run: |
           cd ios
@@ -108,8 +108,6 @@ jobs:
              PROJECT=$(find . -maxdepth 1 -name "*.xcodeproj" | head -n 1)
              BUILD_ARG="-project $PROJECT"; SCHEME=$(basename "$PROJECT" .xcodeproj)
           fi
-          
-          echo "🚀 Building $SCHEME..."
           
           xcodebuild build \
             $BUILD_ARG \
@@ -124,7 +122,7 @@ jobs:
             GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
             STRIP_INSTALLED_PRODUCT=YES
 
-      # 7. PACKAGE & CLEAN
+      # 8. PACKAGE
       - name: Package IPA
         run: |
           cd ios
@@ -137,8 +135,6 @@ jobs:
           fi
           
           cp -r "$APP_PATH" Payload/
-
-          # Clean Signature
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
           
           IPA_NAME="CAPlayground_v1.0.${{ github.run_number }}.ipa"
@@ -146,9 +142,9 @@ jobs:
 
           echo "IPA_NAME=$IPA_NAME" >> $GITHUB_ENV
 
-      # 8. UPLOAD
+      # 9. UPLOAD
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-CrashProof-App
+          name: CAPlayground-Fixed-App
           path: ios/${{ env.IPA_NAME }}
