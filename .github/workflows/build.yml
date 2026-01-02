@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Final Identity Shift)
+name: CAPlayground V6 (Hard-Force Tendies)
 
 on:
   push:
@@ -31,26 +31,33 @@ jobs:
       - name: Bypass Pod Install
         run: |
           cd ios
-          echo "🚫 Skipping pod install to avoid private repo login errors..."
-          # Tell Xcode not to check the Pods Manifest
+          echo "🚫 Skipping pod install to avoid private repo errors..."
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} +
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} +
 
-      # 3. MASTER PATCH (Identity Shift & Tendies Fix)
+      # 3. MASTER PATCH (Hard-Force .tendies & Identity Shift)
       - name: Apply Master Patch
         run: |
           cd ios
-          echo "🎨 Starting Identity Shift..."
+          echo "🎨 Starting Hard-Force Identity Shift..."
 
-          # A. Fix .tendies .zip bug (Removes forced zip extensions)
+          # A. REMOVE .ZIP BUG
+          # Deletes the code that forces .zip extensions [memory:21]
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
           find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
 
-          # B. Modify Info.plist (Name, ID, Permissions)
+          # B. FORCE .TENDIES FILENAME
+          # This overrides the "download" name and forces "export.tendies" [memory:43]
+          find . -name "LEANWebViewController.m" -exec sed -i '' 's/suggestedFilename/@"export.tendies"/g' {} +
+
+          # C. Modify Info.plist (Identity & Files App Support)
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
+            # Rename App
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
+            # Change Bundle ID
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
+            # Enable Files App Access [memory:18]
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled true" "$PLIST"
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
           fi
@@ -59,14 +66,10 @@ jobs:
       - name: Build App
         run: |
           cd ios
-          # Auto-find the workspace (handles CAPlayground vs CAPlaygrounds)
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
-          
-          # Auto-find the correct Scheme name
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
           
-          echo "🚀 Building Workspace: $WORKSPACE"
-          echo "🚀 Using Scheme: $SCHEME"
+          echo "🚀 Building Workspace: $WORKSPACE with Scheme: $SCHEME"
           
           xcodebuild build \
             -workspace "$WORKSPACE" \
@@ -95,11 +98,9 @@ jobs:
           fi
           
           cp -r "$APP_PATH" Payload/
-
-          # Clean Signature for SideStore
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
           
-          IPA_NAME="CAPlayground_v1.0.${{ github.run_number }}.ipa"
+          IPA_NAME="CAPlayground_v6_Fixed.ipa"
           zip -r -y -X "$IPA_NAME" Payload
 
           echo "IPA_NAME=$IPA_NAME" >> $GITHUB_ENV
@@ -108,5 +109,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-IdentityShift-IPA
+          name: CAPlayground-HardForce-IPA
           path: ios/${{ env.IPA_NAME }}
