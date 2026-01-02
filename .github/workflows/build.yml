@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Perfect Real Device)
+name: CAPlayground V6 (ULTIMATE FINAL)
 
 on:
   push:
@@ -24,57 +24,48 @@ jobs:
             echo "📂 Using existing folder."
           fi
 
-      # 2. SUPER SURGERY: Total Scrub + Code Injection + Project Clean
+      # 2. SUPER SURGERY: Total Scrub + Intercept Injection + Debug Mode
       - name: Super Surgery
         run: |
           cd ios
-          # Base64 encoded handler to prevent YAML parsing errors [web:75]
+          # Base64 encoded code blocks to bypass YAML issues [web:75]
+          # BLOCK 1: THE TENDIES INTERCEPTOR
+          echo "LSAodm9pZClVUkxTZXNzaW9uOihOU1VSTFNlc3Npb24gKilzZXNzaW9uIGRvd25sb2FkVGFzazooTlNVUkxTZXNzaW9uRG93bmxvYWRUYXNrICopZG93bmxvYWRUYXNrIGRpZEZpbmlzaERvd25sb2FkaW5nVG9VUkw6KE5TVVJMICopbG9jYXRpb24gewogICAgTlNTdHJpbmcgKnN1Z2dlc3RlZCA9IGRvd25sb2FkVGFzay5yZXNwb25zZS5zdWdnZXN0ZWRGaWxlbmFtZSA/OiBAImV4cG9ydCI7CiAgICBOU1N0cmluZyAqbmFtZSA9IFtbW3N1Z2dlc3RlZCBzdHJpbmdCeURlbGV0aW5nUGF0aEV4dGVuc2lvbl0gc3RyaW5nQnlBcHBlbmRpbmdQYXRoRXh0ZW5zaW9uOkBhdCJ0ZW5kaWVzIl07CiAgICBOU1VSTCAqZG9jcyA9IFtbTlNGaWxlTWW5hZ2VyIGRlZmF1bHRNYW5hZ2VyXSBVUkxzRm9yRGlyZWN0b3J5Ok5TRG9jdW1lbnREaXJlY3RvcnkgaW5Eb21haW5zOk5TVXNlckRvbWFpbm1hc2tdLmZpcnN0T2JqZWN0OwogICAgTlNVUkwgKmRlc3QgPSBbZG9jcyBVUkxCeUFwcGVuZGluZ0NvbXBvbmVudDpuYW1lXTsKICAgIFtbTlNGaWxlTWFuYWdlciBkZWZhdWx0TWFuYWdlcl0gbW92ZUl0ZW1BdFVSTDpsb2NhdGlvbiB0b1VSTDpkZXN0IGVycm9yOm5pbF07Cn0K" | base64 --decode | sed 's/at/@/g' > /tmp/interceptor.txt
+          
+          # BLOCK 2: THE WKDOWNLOAD HANDLER
           echo "LVYgKHZvaWQpZG93bmxvYWQ6KG5vbm51bGwgV0tEb3dubG9hZCAqKWRvd25sb2FkIApkZWNpZGVURGVzdGluYXRpb25Vc2luZ1Jlc3BvbnNlOihub25udWxsIE5TVVJMUmVzcG9uc2UgKilyZXNwb25zZSAKc3VnZ2VzdGVkRmlsZW5hbWU6KG5vbm51bGwgTlNTdHJpbmcgKilzdWdnZXN0ZWRGaWxlbmFtZSAKY29tcGxldGlvbkhhbmRsZXI6KG5vbm51bGwgdm9pZCAoXmF0KShOU1VSTCAqIF9OdWxsYWJsZSkpY29tcGxldGlvbkhhbmRsZXIgCkFQSV9BVkFJTEFCTEUoaW9zKDE1LjApKSB7CiAgICBOU1N0cmluZyAqZml4ZWROYW1lID0gW3N1Z2dlc3RlZEZpbGVuYW1lIHN0cmluZ0J5RGVsZXRpbmdQYXRoRXh0ZW5zaW9uXTsKICAgIGZpeGVkTmFtZSA9IFtmaXhlZE5hbWUgc3RyaW5nQnlBcHBlbmRpbmdQYXRoRXh0ZW5zaW9uOkBhdCJ0ZW5kaWVzIl07CiAgICBOU1VSTCAqZG9jdW1lbnRzRGlyID0gW1tOU0ZpbGVNYW5hZ2VyIGRlZmF1bHRNYW5hZ2VyXSBVUkxzRm9yRGlyZWN0b3J5Ok5TRG9jdW1lbnREaXJlY3RvcnkgaW5Eb21haW5zOk5TVXNlckRvbWFpbm1hc2tdLmZpcnN0T2JqZWN0OwogICAgTlNVUkwgKnVybCA9IFtkb2N1bWVudHNEaXIgVVJMQnlBcHBlbmRpbmdDb21wb25lbnQ6Zml4ZWROYW1lXTsKICAgIGNvbXBsZXRpb25IYW5kbGVyKHVybCk7Cn0K" | base64 --decode | sed 's/at/@/g' > /tmp/handler.txt
 
           python3 << 'EOF'
           import os
 
-          # Load the Objective-C handler code
-          with open("/tmp/handler.txt", 'r') as hf:
-              h_code = hf.read()
+          with open("/tmp/interceptor.txt", 'r') as f: interceptor = f.read()
+          with open("/tmp/handler.txt", 'r') as f: handler = f.read()
 
           for root, dirs, files in os.walk('.'):
               for file in files:
                   fpath = os.path.join(root, file)
-                  
-                  # Scrub all source files for the .zip bug [web:93][web:103]
                   if file.endswith(('.m', '.h', '.swift', '.pbxproj')):
-                      try:
-                          with open(fpath, 'r', errors='ignore') as f:
-                              content = f.read()
-                          
-                          # Global replace for filename logic
-                          new_content = content.replace('stringByAppendingPathExtension:@"zip"', 'stringByAppendingPathExtension:@"tendies"')
-                          new_content = new_content.replace('@"zip"', '@"tendies"')
-                          new_content = new_content.replace('application/zip', 'application/tendies')
-                          
-                          # Deep Project surgery: Kill Google, Signing, and Simulator [web:56][memory:31]
-                          if file == 'project.pbxproj':
-                              new_content = '\n'.join([l for l in new_content.split('\n') if 'GoogleService-Info.plist' not in l])
-                              new_content = new_content.replace('CODE_SIGNING_ALLOWED = YES', 'CODE_SIGNING_ALLOWED = NO')
-                              new_content = new_content.replace('CODE_SIGNING_REQUIRED = YES', 'CODE_SIGNING_REQUIRED = NO')
-                              new_content = new_content.replace('SDKROOT = iphonesimulator', 'SDKROOT = iphoneos')
+                      with open(fpath, 'r', errors='ignore') as f: content = f.read()
+                      
+                      # NUCLEAR SCRUB [web:93][web:103]
+                      new_content = content.replace('stringByAppendingPathExtension:@"zip"', 'stringByAppendingPathExtension:@"tendies"')
+                      new_content = new_content.replace('@"zip"', '@"tendies"').replace('application/zip', 'application/tendies')
+                      
+                      # PROJECT SURGERY [memory:31]
+                      if file == 'project.pbxproj':
+                          new_content = '\n'.join([l for l in new_content.split('\n') if 'GoogleService-Info.plist' not in l])
+                          new_content = new_content.replace('SDKROOT = iphonesimulator', 'SDKROOT = iphoneos')
 
-                          # Inject missing download handler into WebViewController
-                          if file == 'LEANWebViewController.m' and 'decideDestinationUsingResponse' not in new_content:
-                              if '@end' in new_content:
-                                  new_content = new_content.replace('@end', h_code + '\n@end')
+                      # INJECT BOTH HANDLERS
+                      if file == 'LEANWebViewController.m' and 'tendies' not in new_content:
+                          new_content = new_content.replace('@end', interceptor + '\n' + handler + '\n@end')
+                          # DEBUG MODE: Enable isInspectable [web:197]
+                          debug_inject = 'if (@available(iOS 16.4, *)) { [self.wkWebview setInspectable:YES]; }'
+                          new_content = new_content.replace('[self switchToWebView:wv showImmediately:NO];', '[self switchToWebView:wv showImmediately:NO];' + debug_inject)
 
-                          if new_content != content:
-                              with open(fpath, 'w') as f:
-                                  f.write(new_content)
-                      except Exception as e:
-                          print(f"Skipping {fpath}: {e}")
+                      if new_content != content:
+                          with open(fpath, 'w') as f: f.write(new_content)
           EOF
-
-          # Clean up Pod scripts that cause build-time checks [memory:32]
-          find . -name "*.sh" -exec sed -i '' '/diff/d' {} + || true
-          find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} + || true
 
       # 3. IDENTITY & PERMISSIONS (Files App Enable)
       - name: Apply Identity Patch
@@ -82,31 +73,17 @@ jobs:
           cd ios
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
-            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" || true
           fi
 
-      # 4. BUILD APP (REAL DEVICE - BARE METAL)
+      # 4. BUILD APP (REAL DEVICE - DEBUG ARCH)
       - name: Build App
         run: |
           cd ios
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
-          
-          # Built for iphoneos (Real Hardware) [memory:31]
-          xcodebuild build \
-            -workspace "$WORKSPACE" \
-            -scheme "$SCHEME" \
-            -sdk iphoneos \
-            -configuration Release \
-            -derivedDataPath build/ \
-            -arch arm64 \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO
+          xcodebuild build -workspace "$WORKSPACE" -scheme "$SCHEME" -sdk iphoneos -configuration Release -derivedDataPath build/ -arch arm64 CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 
       # 5. PACKAGE IPA
       - name: Package IPA
@@ -114,17 +91,14 @@ jobs:
           cd ios
           mkdir Payload
           APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
-          if [ -z "$APP_PATH" ]; then echo "❌ NO APP FOUND"; exit 1; fi
-          
           cp -r "$APP_PATH" Payload/
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
-          
-          zip -r -y -X "CAPlayground_Final.ipa" Payload
-          echo "IPA_PATH=ios/CAPlayground_Final.ipa" >> $GITHUB_ENV
+          zip -r -y -X "CAPlayground_Ultimate.ipa" Payload
+          echo "IPA_NAME=CAPlayground_Ultimate.ipa" >> $GITHUB_ENV
 
       # 6. UPLOAD
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-Nuclear-Final
-          path: ios/CAPlayground_Final.ipa
+          name: CAPlayground-Ultimate-Final
+          path: ios/CAPlayground_Ultimate.ipa
