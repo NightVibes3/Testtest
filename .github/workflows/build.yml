@@ -1,4 +1,4 @@
-name: CAPlayground V12 (Simple Fix)
+name: CAPlayground V13 (Smart Offline Mode)
 
 on:
   push:
@@ -15,10 +15,11 @@ jobs:
         with:
           lfs: true
 
-      # 1. EXTRACT
+      # 1. EXTRACT SOURCE
       - name: Extract Source
         run: |
           if [ -f "ios_source.tar.gz" ]; then
+            echo "📦 Extracting ios_source.tar.gz..."
             tar -xzf ios_source.tar.gz
           elif [ -d "ios" ]; then
             echo "📂 Using existing 'ios' folder."
@@ -27,73 +28,61 @@ jobs:
             exit 1
           fi
 
-      # 2. CACHE PODS
-      - name: Cache CocoaPods
-        uses: actions/cache@v3
-        with:
-          path: ios/Pods
-          key: ${{ runner.os }}-pods-v12-${{ hashFiles('ios/Podfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pods-v12-
-
-      # 3. FIX PODFILE
-      - name: Fix Podfile & Sources
+      # 2. SMART PODS LOGIC (The Fix)
+      # If Pods folder exists, we trust it and SKIP pod install.
+      # This prevents breaking the build by trying to fetch private repos we can't access.
+      - name: Configure Dependencies
         run: |
           cd ios
-          if [ -f "Podfile" ]; then
+          if [ -d "Pods" ] && [ -f "Pods/Manifest.lock" ]; then
+            echo "✅ 'Pods' folder detected. Using existing dependencies."
+            echo "::set-output name=SKIP_INSTALL::true"
+          else
+            echo "⚠️ 'Pods' folder missing. Attempting fresh install (Risky)..."
+            
+            # Delete lockfile to reset private repo bindings
+            rm -f Podfile.lock
+            
+            # Remove ONLY MedianIcons (Private/Broken)
+            # Keep GoNativeCore (Required for app to work)
             sed -i '' '/gonative-specs/d' Podfile
             sed -i '' "/pod 'MedianIcons'/d" Podfile
-            sed -i '' "/pod 'GoNativeCore'/d" Podfile
             
+            # Ensure Public CDN
             if ! grep -q "cdn.cocoapods.org" Podfile; then
                echo "source 'https://cdn.cocoapods.org/'" | cat - Podfile > temp && mv temp Podfile
             fi
+            
+            # Install
+            pod install --repo-update
           fi
 
-      # 4. CODE SURGERY (Simplified)
-      # Removes imports of missing libs without complex 'find' syntax
+      # 3. CODE SURGERY (Remove MedianIcons Imports)
+      # Since we might have removed MedianIcons, we must remove code that uses it.
       - name: Remove Broken Imports
         run: |
           cd ios
-          echo "🔪 Removing missing module imports..."
-          
-          # Simple recursive grep + sed that is robust against shell syntax errors
-          # We check if the file is NOT in Pods before running sed
-          
+          echo "🔪 removing MedianIcons references..."
+          # Recursively remove lines importing MedianIcons, ignoring Pods folder
           grep -rl "MedianIcons" . | while read file; do
             if [[ "$file" != *"Pods"* ]]; then
-              echo "   Cleaned: $file"
               sed -i '' '/MedianIcons/d' "$file"
             fi
           done
 
-          grep -rl "GoNativeCore" . | while read file; do
-            if [[ "$file" != *"Pods"* ]]; then
-              echo "   Cleaned: $file"
-              sed -i '' '/GoNativeCore/d' "$file"
-            fi
-          done
-          
-          echo "✅ Imports removed."
-
-      # 5. INSTALL PODS
-      - name: Install Pods
-        run: |
-          cd ios
-          pod install --repo-update || true
-
-      # 6. MASTER PATCH
+      # 4. MASTER PATCH (Privacy + Identity + Tendies)
       - name: Apply Master Patch
         run: |
           cd ios
           
-          # A. Fix Median .zip bug
+          # A. Fix Median .zip bug (The Tendies Fix)
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
           find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
 
           # B. Modify Info.plist
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
+            # Identity
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
             
@@ -107,14 +96,15 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
           fi
 
-      # 7. NEUTRALIZE ENTITLEMENTS
+      # 5. NEUTRALIZE ENTITLEMENTS
       - name: Strip Entitlements
         run: |
           cd ios
           PROJECT=$(find . -name "*.xcodeproj" | head -n 1)
+          # Remove entitlement checks that fail on free accounts
           sed -i '' '/CODE_SIGN_ENTITLEMENTS/d' "$PROJECT/project.pbxproj"
 
-      # 8. BUILD
+      # 6. BUILD APP
       - name: Build App
         run: |
           cd ios
@@ -126,6 +116,7 @@ jobs:
              BUILD_ARG="-project $PROJECT"; SCHEME=$(basename "$PROJECT" .xcodeproj)
           fi
           
+          # Build using the "Release" configuration
           xcodebuild build \
             $BUILD_ARG \
             -scheme "$SCHEME" \
@@ -139,7 +130,7 @@ jobs:
             GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
             STRIP_INSTALLED_PRODUCT=YES
 
-      # 9. PACKAGE
+      # 7. PACKAGE IPA
       - name: Package IPA
         run: |
           cd ios
@@ -147,7 +138,7 @@ jobs:
           APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
-            echo "❌ Build failed."
+            echo "❌ Build failed. No .app found."
             exit 1
           fi
           
@@ -159,9 +150,9 @@ jobs:
 
           echo "IPA_NAME=$IPA_NAME" >> $GITHUB_ENV
 
-      # 10. UPLOAD
+      # 8. UPLOAD
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-V12-App
+          name: CAPlayground-V13-App
           path: ios/${{ env.IPA_NAME }}
