@@ -1,4 +1,4 @@
-name: CAPlayground V6 (FINAL STABLE)
+name: CAPlayground V6 (MASTER BUILD)
 
 on:
   push:
@@ -24,30 +24,30 @@ jobs:
             echo "📂 No archive found, assuming sources are present."
           fi
 
-      # 2. PYTHON SURGERY: Safe Replacement + Interceptor Injection
+      # 2. PYTHON SURGERY: Encoding-Safe Injection [web:225][web:257]
       - name: Python Surgery
         shell: python
         run: |
           import os
-          
+
+          # HANDLER INJECTION BLOCKS
           interceptor = """
-          - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
-              NSString *suggested = downloadTask.response.suggestedFilename ?: @"export";
-              NSString *name = [[suggested stringByDeletingPathExtension] stringByAppendingPathExtension:@"tendies"];
-              NSURL *docs = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
-              NSURL *dest = [docs URLByAppendingPathComponent:name];
-              [[NSFileManager defaultManager] moveItemAtURL:location toURL:dest error:nil];
-          }
-          """
-          
+- (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
+    NSString *suggested = downloadTask.response.suggestedFilename ?: @"export";
+    NSString *name = [[suggested stringByDeletingPathExtension] stringByAppendingPathExtension:@"tendies"];
+    NSURL *docs = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+    NSURL *dest = [docs URLByAppendingPathComponent:name];
+    [[NSFileManager defaultManager] moveItemAtURL:location toURL:dest error:nil];
+}
+"""
           handler = """
-          - (void)download:(nonnull WKDownload *)download decideDestinationUsingResponse:(nonnull NSURLResponse *)response suggestedFilename:(nonnull NSString *)suggestedFilename completionHandler:(nonnull void (^)(NSURL * _Nullable))completionHandler {
-              NSString *fixedName = [[suggestedFilename stringByDeletingPathExtension] stringByAppendingPathExtension:@"tendies"];
-              NSURL *documentsDir = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
-              NSURL *url = [documentsDir URLByAppendingPathComponent:fixedName];
-              completionHandler(url);
-          }
-          """
+- (void)download:(nonnull WKDownload *)download decideDestinationUsingResponse:(nonnull NSURLResponse *)response suggestedFilename:(nonnull NSString *)suggestedFilename completionHandler:(nonnull void (^)(NSURL * _Nullable))completionHandler {
+    NSString *fixedName = [[suggestedFilename stringByDeletingPathExtension] stringByAppendingPathExtension:@"tendies"];
+    NSURL *documentsDir = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+    NSURL *url = [documentsDir URLByAppendingPathComponent:fixedName];
+    completionHandler(url);
+}
+"""
 
           for root, dirs, files in os.walk('ios'):
               for file in files:
@@ -57,14 +57,16 @@ jobs:
                           with open(fpath, 'rb') as f:
                               content = f.read().decode('utf-8', 'ignore')
                           
-                          # NUCLEAR SCRUB [web:93]
+                          # 1. SCRUB FILENAMES
                           new_content = content.replace('stringByAppendingPathExtension:@"zip"', 'stringByAppendingPathExtension:@"tendies"')
                           new_content = new_content.replace('@"zip"', '@"tendies"').replace('application/zip', 'application/tendies')
                           
+                          # 2. PROJECT FIXES
                           if file == 'project.pbxproj':
                               new_content = '\n'.join([l for l in new_content.split('\n') if 'GoogleService-Info.plist' not in l])
                               new_content = new_content.replace('SDKROOT = iphonesimulator', 'SDKROOT = iphoneos')
 
+                          # 3. INTERCEPTOR & DEBUG MODE [web:180][web:197]
                           if file == 'LEANWebViewController.m' and 'tendies' not in new_content:
                               new_content = new_content.replace('@end', f"{interceptor}\n{handler}\n@end")
                               debug_inject = 'if (@available(iOS 16.4, *)) { [self.wkWebview setInspectable:YES]; }'
@@ -76,7 +78,7 @@ jobs:
                       except Exception as e:
                           print(f"Skipping {file}: {e}")
 
-      # 3. IDENTITY PATCH
+      # 3. IDENTITY PATCH (FILES APP ACCESS) [memory:18]
       - name: Apply Identity Patch
         run: |
           cd ios
@@ -86,15 +88,26 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" || true
           fi
 
-      # 4. BUILD APP (REAL DEVICE)
+      # 4. BUILD APP (NO-SIGNING BYPASS) [web:277][web:289]
       - name: Build App
         run: |
           cd ios
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
-          xcodebuild build -workspace "$WORKSPACE" -scheme "$SCHEME" -sdk iphoneos -configuration Release -derivedDataPath build/ -arch arm64 CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+          
+          xcodebuild build \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build/ \
+            -arch arm64 \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
-      # 5. PACKAGE IPA
+      # 5. PACKAGE IPA (FOR LIVECONTAINER) [image:215]
       - name: Package IPA
         run: |
           cd ios
@@ -108,5 +121,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-Tendies-Final
+          name: CAPlayground-Final-Fixed
           path: ios/CAPlayground_Tendies.ipa
