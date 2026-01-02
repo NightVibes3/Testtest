@@ -13,30 +13,34 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          lfs: true  # Ensures large files like your tar.gz are downloaded correctly
+          lfs: true
 
       - name: Extract Source Code
-        run: |
-          # This creates the 'ios' directory found in your archive
-          tar -xzf ios_source.tar.gz
-          ls -la  # Debug: confirms 'ios' folder now exists
+        run: tar -xzf ios_source.tar.gz
 
-      - name: Fix Podfile Source
+      - name: Fix Podfile for Local Pods
         run: |
           cd ios
-          # Median apps often include a private 'gonative-specs' source.
-          # This line removes it so 'pod install' uses the public repo instead.
+          # 1. Remove the private source line
           sed -i '' '/gonative-specs/d' Podfile
+          
+          # 2. Tell Podfile to use the local MedianIcons and GoNativeCore already in your folder
+          # This replaces the standard pod lines with local path references
+          sed -i '' "s/pod 'MedianIcons'/pod 'MedianIcons', :path => 'Pods\/MedianIcons'/g" Podfile
+          sed -i '' "s/pod 'GoNativeCore'/pod 'GoNativeCore', :path => 'Pods\/GoNativeCore'/g" Podfile
+          
+          echo "Updated Podfile:"
+          cat Podfile
 
       - name: Install Pods
         run: |
           cd ios
-          pod install --repo-update
+          # We use --no-repo-update because we are using the local files you already have
+          pod install
 
       - name: Build App
         run: |
           cd ios
-          # Build the workspace using the scheme identified in your logs
           xcodebuild build \
             -workspace "CAPlaygrounds.xcworkspace" \
             -scheme "CAPlaygrounds" \
@@ -50,9 +54,7 @@ jobs:
         run: |
           cd ios
           mkdir Payload
-          # Copy the .app bundle created by xcodebuild into the Payload folder
           cp -r build/Build/Products/Release-iphoneos/CAPlaygrounds.app Payload/
-          # Create the .ipa zip archive preserving symbolic links
           zip -r -y CAPlaygrounds.ipa Payload
 
       - name: Upload IPA
