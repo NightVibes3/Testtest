@@ -3,27 +3,33 @@ name: Build iOS IPA
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:  # Allows you to click a button to run manually
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
 
-      # STEP 1: Extract the tar file
-      # (If you uploaded the 'ios' folder directly, DELETE this step)
+      - name: Verify File Exists
+        run: ls -la
+
       - name: Extract Source Code
         run: tar -xzf ios_source.tar.gz
 
-      # STEP 2: Install Dependencies
       - name: Install Pods
         run: |
+          # We assume the tar extracts a folder named 'ios'
+          # If the extraction creates a different folder, 'ls' below will show us.
+          ls -R
           cd ios
           pod install --repo-update
 
-      # STEP 3: Build the App
       - name: Build App
         run: |
           cd ios
@@ -37,7 +43,6 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      # STEP 4: Package the IPA
       - name: Package IPA
         run: |
           cd ios
@@ -45,7 +50,6 @@ jobs:
           cp -r build/Build/Products/Release-iphoneos/CAPlaygrounds.app Payload/
           zip -r -y CAPlaygrounds.ipa Payload
 
-      # STEP 5: Upload the Result
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
