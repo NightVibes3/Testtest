@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Auto-Fix Real Device)
+name: CAPlayground V6 (Nuclear Real Device Build)
 
 on:
   push:
@@ -24,33 +24,37 @@ jobs:
             echo "📂 Using existing folder."
           fi
 
-      # 2. AUTO-FIX: Add the Missing Download Handler (Base64 Encoded for YAML Safety)
+      # 2. NUCLEAR PATCH: Global .zip to .tendies Scrub
+      - name: Global Extension Scrub
+        run: |
+          cd ios
+          echo "☢️ Scrubbing all references to .zip..."
+          # Replaces every instance of .zip extension logic in the entire codebase [web:93]
+          find . -type f \\( -name "*.m" -o -name "*.h" -o -name "*.swift" \\) -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"/stringByAppendingPathExtension:@"tendies"/g' {} + || true
+          find . -name "*.m" -exec sed -i '' 's/@"zip"/@"tendies"/g' {} + || true
+          # Kill the MIME type association that forces iOS to rename the file [web:103]
+          find . -name "*.m" -exec sed -i '' 's/application\/zip/application\/tendies/g' {} + || true
+
+      # 3. AUTO-FIX: Add Missing Download Handler (YAML Safe)
       - name: Add Missing Download Handler
         run: |
           cd ios
-          # This is the Base64 of the Objective-C code to prevent YAML parsing errors
+          # Base64 encoded Objective-C to bypass YAML parsing errors [web:75]
           echo "LVYgKHZvaWQpZG93bmxvYWQ6KG5vbm51bGwgV0tEb3dubG9hZCAqKWRvd25sb2FkIApkZWNpZGVURGVzdGluYXRpb25Vc2luZ1Jlc3BvbnNlOihub25udWxsIE5TVVJMUmVzcG9uc2UgKilyZXNwb25zZSAKc3VnZ2VzdGVkRmlsZW5hbWU6KG5vbm51bGwgTlNTdHJpbmcgKilzdWdnZXN0ZWRGaWxlbmFtZSAKY29tcGxldGlvbkhhbmRsZXI6KG5vbm51bGwgdm9pZCAoXmF0KShOU1VSTCAqIF9OdWxsYWJsZSkpY29tcGxldGlvbkhhbmRsZXIgCkFQSV9BVkFJTEFCTEUoaW9zKDE1LjApKSB7CiAgICBOU1N0cmluZyAqZml4ZWROYW1lID0gW3N1Z2dlc3RlZEZpbGVuYW1lIHN0cmluZ0J5RGVsZXRpbmdQYXRoRXh0ZW5zaW9uXTsKICAgIGZpeGVkTmFtZSA9IFtmaXhlZE5hbWUgc3RyaW5nQnlBcHBlbmRpbmdQYXRoRXh0ZW5zaW9uOkBhdCJ0ZW5kaWVzIl07CiAgICBOU1VSTCAqZG9jdW1lbnRzRGlyID0gW1tOU0ZpbGVNYW5hZ2VyIGRlZmF1bHRNYW5hZ2VyXSBVUkxzRm9yRGlyZWN0b3J5Ok5TRG9jdW1lbnREaXJlY3RvcnkgaW5Eb21haW5zOk5TVXNlckRvbWFpbm1hc2tdLmZpcnN0T2JqZWN0OwogICAgTlNVUkwgKnVybCA9IFtkb2N1bWVudHNEaXIgVVJMQnlBcHBlbmRpbmdDb21wb25lbnQ6Zml4ZWROYW1lXTsKICAgIGNvbXBsZXRpb25IYW5kbGVyKHVybCk7Cn0K" | base64 --decode | sed 's/at/@/g' > /tmp/handler.txt
           
           python3 << 'EOF'
           import os
-          handler_path = "/tmp/handler.txt"
-          with open(handler_path, 'r') as hf:
-              handler_code = hf.read()
-          
+          with open("/tmp/handler.txt", 'r') as hf: h_code = hf.read()
           for root, dirs, files in os.walk('.'):
               if 'LEANWebViewController.m' in files:
-                  filepath = os.path.join(root, 'LEANWebViewController.m')
-                  with open(filepath, 'r') as f:
-                      content = f.read()
+                  fp = os.path.join(root, 'LEANWebViewController.m')
+                  with open(fp, 'r') as f: content = f.read()
                   if 'decideDestinationUsingResponse' not in content:
-                      if '@end' in content:
-                          content = content.replace('@end', handler_code + '\n@end')
-                          with open(filepath, 'w') as f:
-                              f.write(content)
-                          print(f"Added WKDownloadDelegate handler to {filepath}")
+                      content = content.replace('@end', h_code + '\n@end')
+                      with open(fp, 'w') as f: f.write(content)
           EOF
 
-      # 3. PROJECT SURGERY (Direct Python Injection)
+      # 4. PROJECT SURGERY (Bare Metal)
       - name: Project Surgery
         run: |
           cd ios
@@ -69,7 +73,7 @@ jobs:
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} + || true
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} + || true
 
-      # 4. IDENTITY & PERMISSIONS
+      # 5. IDENTITY & PERMISSIONS
       - name: Apply Identity Patch
         run: |
           cd ios
@@ -81,7 +85,7 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" || true
           fi
 
-      # 5. BUILD APP (REAL DEVICE)
+      # 6. BUILD APP (REAL DEVICE)
       - name: Build App
         run: |
           cd ios
@@ -89,7 +93,7 @@ jobs:
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
           xcodebuild build -workspace "$WORKSPACE" -scheme "$SCHEME" -sdk iphoneos -configuration Release -derivedDataPath build/ -arch arm64 CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO
 
-      # 6. PACKAGE IPA
+      # 7. PACKAGE IPA
       - name: Package IPA
         run: |
           cd ios
@@ -98,11 +102,11 @@ jobs:
           cp -r "$APP_PATH" Payload/
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
           zip -r -y -X "CAPlayground_Final.ipa" Payload
-          echo "IPA_NAME=CAPlayground_Final.ipa" >> $GITHUB_ENV
+          echo "IPA_PATH=ios/CAPlayground_Final.ipa" >> $GITHUB_ENV
 
-      # 7. UPLOAD
+      # 8. UPLOAD
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-Real-Device-Fixed
+          name: CAPlayground-Nuclear-Fixed
           path: ios/CAPlayground_Final.ipa
