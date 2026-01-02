@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Ironclad Real Device Final)
+name: CAPlayground V6 (Auto-Fix Real Device)
 
 on:
   push:
@@ -24,8 +24,51 @@ jobs:
             echo "📂 Using existing folder."
           fi
 
-      # 2. PROJECT SURGERY (Python Deep Clean)
-      # This removes missing Google files and disables strict signing so the build finishes.
+      # 2. AUTO-FIX: Add the Missing Download Handler
+      - name: Add Missing Download Handler
+        run: |
+          cd ios
+          echo "🔧 Adding WKDownloadDelegate handler to LEANWebViewController.m..."
+          
+          python3 << 'PYTHON_SCRIPT'
+          import os
+          
+          # Find LEANWebViewController.m
+          for root, dirs, files in os.walk('.'):
+              if 'LEANWebViewController.m' in files:
+                  filepath = os.path.join(root, 'LEANWebViewController.m')
+                  with open(filepath, 'r') as f:
+                      content = f.read()
+                  
+                  # Check if the handler already exists
+                  if 'decideDestinationUsingResponse' in content:
+                      print(f"✅ Handler already exists in {filepath}")
+                  else:
+                      # The handler code to inject
+                      handler_code = '''
+- (void)download:(nonnull WKDownload *)download 
+decideDestinationUsingResponse:(nonnull NSURLResponse *)response 
+suggestedFilename:(nonnull NSString *)suggestedFilename 
+completionHandler:(nonnull void (^)(NSURL * _Nullable))completionHandler 
+API_AVAILABLE(ios(15.0)) {
+    NSString *fixedName = [suggestedFilename stringByDeletingPathExtension];
+    fixedName = [fixedName stringByAppendingPathExtension:@"tendies"];
+    NSURL *documentsDir = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+    NSURL *url = [documentsDir URLByAppendingPathComponent:fixedName];
+    completionHandler(url);
+}
+'''
+                      # Find @end at the end of the file and insert before it
+                      if '@end' in content:
+                          content = content.replace('@end', handler_code + '\n@end')
+                          with open(filepath, 'w') as f:
+                              f.write(content)
+                          print(f"✅ Added WKDownloadDelegate handler to {filepath}")
+                      else:
+                          print(f"⚠️ Could not find @end in {filepath}")
+          PYTHON_SCRIPT
+
+      # 3. PROJECT SURGERY (Python Deep Clean)
       - name: Project Surgery
         run: |
           cd ios
@@ -41,29 +84,16 @@ jobs:
                           if 'GoogleService-Info.plist' in line: continue
                           line = line.replace('CODE_SIGNING_ALLOWED = YES', 'CODE_SIGNING_ALLOWED = NO')
                           line = line.replace('CODE_SIGNING_REQUIRED = YES', 'CODE_SIGNING_REQUIRED = NO')
+                          line = line.replace('SDKROOT = iphonesimulator', 'SDKROOT = iphoneos')
                           f.write(line)
           "
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} + || true
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} + || true
 
-      # 3. IRONCLAD PATCH (Extension & Identity)
-      # This forces the .tendies extension and enables the Files App support.
-      - name: Apply Ironclad Patch
+      # 4. IDENTITY & PERMISSIONS
+      - name: Apply Identity Patch
         run: |
           cd ios
-          echo "🎨 Applying Ironclad Patches..."
-
-          # Force removal of old .zip logic [memory:21]
-          find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
-
-          # Ironclad .tendies force (Bypasses system guessing) [web:101]
-          find . -name "LEANWebViewController.m" -exec sed -i '' '/decideDestinationUsingResponse/a \
-          NSString *fixedName = [suggestedFilename stringByDeletingPathExtension]; \
-          fixedName = [fixedName stringByAppendingPathExtension:@"tendies"]; \
-          NSURL *destination = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:fixedName]; \
-          completionHandler(destination); return;' {} + || true
-
-          # Identity & Files App Permissions [memory:18]
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" || true
@@ -72,14 +102,13 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" || true
           fi
 
-      # 4. BUILD APP (REAL DEVICE MODE)
+      # 5. BUILD APP (REAL DEVICE)
       - name: Build App
         run: |
           cd ios
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
           
-          # We use iphoneos to ensure compatibility with your iPhone 17,3 [memory:31]
           xcodebuild build \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -92,28 +121,22 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO
 
-      # 5. PACKAGE IPA
+      # 6. PACKAGE IPA
       - name: Package IPA
         run: |
           cd ios
           mkdir Payload
           APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
-          
-          if [ -z "$APP_PATH" ]; then
-            echo "❌ Build failed. No .app found."
-            exit 1
-          fi
+          if [ -z "$APP_PATH" ]; then echo "❌ NO APP FOUND"; exit 1; fi
           
           cp -r "$APP_PATH" Payload/
-          # SideStore/AltStore will provide their own signature upon install [memory:16]
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
-          
           zip -r -y -X "CAPlayground_Final.ipa" Payload
           echo "IPA_PATH=ios/CAPlayground_Final.ipa" >> $GITHUB_ENV
 
-      # 6. UPLOAD
+      # 7. UPLOAD
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-RealDevice-Final
+          name: CAPlayground-Real-Device-Fixed
           path: ios/CAPlayground_Final.ipa
