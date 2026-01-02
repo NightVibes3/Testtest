@@ -1,4 +1,4 @@
-name: CAPlayground V14 (Force Build)
+name: CAPlayground V15 (Safe PBX Edit)
 
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
         with:
           lfs: true
 
-      # 1. EXTRACT SOURCE
+      # 1. EXTRACT
       - name: Extract Source
         run: |
           if [ -f "ios_source.tar.gz" ]; then
@@ -27,78 +27,81 @@ jobs:
             exit 1
           fi
 
-      # 2. FIX DEPENDENCIES (Safe Mode)
-      - name: Fix Dependencies
+      # 2. MASTER PATCH (Source Code Only)
+      - name: Apply Master Patch
         run: |
           cd ios
-          
-          # If Pods exist, we modify the Podfile to match public sources
-          # just in case, but we try NOT to run pod install if possible.
-          if [ -f "Podfile" ]; then
-             sed -i '' '/gonative-specs/d' Podfile
-             sed -i '' "/pod 'MedianIcons'/d" Podfile
-          fi
+          # A. Fix Median .zip bug
+          find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
+          find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
 
-      # 3. FORCE PROJECT TO IGNORE POD MISMATCH (The Fix)
-      - name: Bypass Manifest Check
-        run: |
-          cd ios
-          PROJECT=$(find . -name "*.xcodeproj" | head -n 1)
-          
-          echo "🔓 Bypassing Pod Manifest Check in $PROJECT..."
-          
-          # This sed command deletes the Shell Script Build Phase that checks the manifest
-          # It looks for the script starting with "[CP] Check Pods Manifest.lock" and removes it.
-          # (We remove the reference to the script execution)
-          sed -i '' '/Check Pods Manifest.lock/d' "$PROJECT/project.pbxproj"
-          
-          echo "✅ Manifest Check disabled."
-
-      # 4. CODE SURGERY (Remove MedianIcons)
-      - name: Remove Broken Imports
-        run: |
-          cd ios
+          # B. Remove MedianIcons Imports
           grep -rl "MedianIcons" . | while read file; do
             if [[ "$file" != *"Pods"* ]]; then
               sed -i '' '/MedianIcons/d' "$file"
             fi
           done
 
-      # 5. MASTER PATCH
-      - name: Apply Master Patch
+      # 3. SAFE PROJECT EDITING (Python)
+      # This replaces the dangerous 'sed' commands on project.pbxproj
+      - name: Safe Project Fix
         run: |
           cd ios
+          PROJECT=$(find . -name "*.xcodeproj" | head -n 1)
+          PBXPROJ="$PROJECT/project.pbxproj"
           
-          # Fix Median .zip bug
-          find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
-          find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
+          echo "🐍 Running Python to safely edit $PBXPROJ..."
+          
+          cat <<EOF > fix_project.py
+          import sys
+          
+          path = sys.argv[1]
+          
+          with open(path, 'r', encoding='utf-8') as f:
+              lines = f.readlines()
+          
+          new_lines = []
+          for line in lines:
+              # 1. Remove Entitlements (Fixes SideStore install)
+              if "CODE_SIGN_ENTITLEMENTS" in line:
+                  continue
+              # 2. Remove Pods Manifest Check (Fixes Pod mismatch error)
+              if "Check Pods Manifest.lock" in line:
+                  continue
+              # 3. Remove the shell script block execution for the manifest check
+              if "ShellScript" in line and "Manifest.lock" in line:
+                  continue
+              
+              new_lines.append(line)
+          
+          with open(path, 'w', encoding='utf-8') as f:
+              f.writelines(new_lines)
+          
+          print("✅ Project file patched successfully.")
+          EOF
+          
+          python3 fix_project.py "$PBXPROJ"
 
-          # Modify Info.plist
+      # 4. MODIFY INFO.PLIST
+      - name: Modify Info.plist
+        run: |
+          cd ios
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
-            # Identity
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
-            
-            # Privacy & Sharing
-            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Save wallpapers.'" "$PLIST" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled true" "$PLIST"
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
           fi
 
-      # 6. NEUTRALIZE ENTITLEMENTS
-      - name: Strip Entitlements
-        run: |
-          cd ios
-          PROJECT=$(find . -name "*.xcodeproj" | head -n 1)
-          sed -i '' '/CODE_SIGN_ENTITLEMENTS/d' "$PROJECT/project.pbxproj"
-
-      # 7. BUILD APP
+      # 5. BUILD APP
       - name: Build App
         run: |
           cd ios
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          
+          echo "🚀 Building $SCHEME..."
           
           xcodebuild build \
             -workspace "$WORKSPACE" \
@@ -113,7 +116,7 @@ jobs:
             GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
             STRIP_INSTALLED_PRODUCT=YES
 
-      # 8. PACKAGE IPA
+      # 6. PACKAGE IPA
       - name: Package IPA
         run: |
           cd ios
@@ -133,9 +136,9 @@ jobs:
 
           echo "IPA_NAME=$IPA_NAME" >> $GITHUB_ENV
 
-      # 9. UPLOAD
+      # 7. UPLOAD
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-V14-App
+          name: CAPlayground-V15-App
           path: ios/${{ env.IPA_NAME }}
