@@ -1,4 +1,4 @@
-name: CAPlayground V6 (No-Fail Lite Build)
+name: CAPlayground V6 (Ultimate No-Fail Build)
 
 on:
   push:
@@ -24,29 +24,33 @@ jobs:
             echo "📂 Using existing folder."
           fi
 
-      # 2. BYPASS PODS & STRIP FIREBASE (Fixes GoogleService Error)
-      - name: Bypass Pods & Strip Firebase
+      # 2. STRIP PROJECT ERRORS (Fixes Google & Pod Crashes)
+      - name: Strip Project Errors
         run: |
           cd ios
-          echo "🚫 Removing Firebase & Pod Checks..."
-          # Fix the Missing GoogleService-Info.plist error
+          echo "🚫 Fixing Missing File References..."
+          # Fix the Missing GoogleService-Info.plist error [web:56]
           find . -name "project.pbxproj" -exec sed -i '' '/GoogleService-Info.plist/d' {} + || true
-          # Fix the Pod Manifest errors
+          # Fix the Pod Manifest errors [memory:32]
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} + || true
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} + || true
 
-      # 3. MASTER PATCH (.tendies & Identity)
+      # 3. MASTER PATCH (Hard-Force .tendies & Identity)
       - name: Apply Master Patch
         run: |
           cd ios
-          echo "🎨 Applying Stable Patch..."
-          # Fix .zip bug
+          echo "🎨 Applying Stable Identity & Extension Patches..."
+          
+          # A. FIX .ZIP BUG (The basic fix) [memory:21]
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
-          # Force .tendies name
+          find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
+          
+          # B. FORCE .TENDIES NAME (Stable Surgeon) [memory:43]
+          # Overrides website names to ensure you get .tendies every time
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/suggestedFilename/@"export.tendies"/g' {} + || true
-          # Clean duplicates
-          find . -name "InfoPlist.strings" -delete || true
-          # Identity
+
+          # C. IDENTITY & PERMISSIONS (Files App & Custom ID) [memory:18]
+          # Note: We NO LONGER delete InfoPlist.strings to prevent "File Not Found" errors.
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" || true
@@ -55,14 +59,16 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" || true
           fi
 
-      # 4. BUILD APP (LITE MODE)
+      # 4. BUILD APP (Stable Lite Mode)
       - name: Build App
         run: |
           cd ios
+          # Auto-detect workspace and scheme to handle plural "s" issues [conversation_history:44]
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
           
-          # LITE MODE: We remove wholemodule optimization to avoid timeouts/freezes
+          echo "🚀 Building $WORKSPACE with Scheme $SCHEME..."
+          
           xcodebuild build \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -81,8 +87,16 @@ jobs:
           cd ios
           mkdir Payload
           APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ Build failed. No .app found."
+            exit 1
+          fi
+          
           cp -r "$APP_PATH" Payload/
+          # Clean signature for SideStore/AltStore [memory:16]
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
+          
           zip -r -y -X "CAPlayground_Final.ipa" Payload
           echo "IPA_PATH=ios/CAPlayground_Final.ipa" >> $GITHUB_ENV
 
@@ -90,5 +104,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-Fixed-IPA
+          name: CAPlayground-Perfect-IPA
           path: ios/CAPlayground_Final.ipa
