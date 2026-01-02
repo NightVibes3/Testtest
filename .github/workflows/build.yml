@@ -1,4 +1,4 @@
-name: CAPlayground V10 (Code Surgery)
+name: CAPlayground V11 (Safe Surgery)
 
 on:
   push:
@@ -32,11 +32,11 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ios/Pods
-          key: ${{ runner.os }}-pods-v10-${{ hashFiles('ios/Podfile.lock') }}
+          key: ${{ runner.os }}-pods-v11-${{ hashFiles('ios/Podfile.lock') }}
           restore-keys: |
-            ${{ runner.os }}-pods-v10-
+            ${{ runner.os }}-pods-v11-
 
-      # 3. FIX PODFILE (Remove Broken Libs)
+      # 3. FIX PODFILE
       - name: Fix Podfile & Sources
         run: |
           cd ios
@@ -50,16 +50,21 @@ jobs:
             fi
           fi
 
-      # 4. CODE SURGERY (Remove Imports of Missing Libs)
-      # This deletes any line in any file that imports the libraries we just removed.
+      # 4. CODE SURGERY (Safe Mode)
+      # Removes imports of missing libs, ignoring the Pods folder to avoid errors
       - name: Remove Broken Imports
         run: |
           cd ios
-          echo "🔪 Removing missing module imports..."
+          echo "🔪 Removing missing module imports (ignoring Pods)..."
           
-          # Delete lines like #import <MedianIcons/MedianIcons.h> or @import MedianIcons;
-          grep -rl "MedianIcons" . | xargs sed -i '' '/MedianIcons/d'
-          grep -rl "GoNativeCore" . | xargs sed -i '' '/GoNativeCore/d'
+          # Find files safely (-print0) and exclude Pods directory
+          # We only look in your source code folders (usually named after the app or 'LeanIOS')
+          
+          # 1. Delete MedianIcons imports
+          find . -type f \\( -name "*.h" -o -name "*.m" \\) -not -path "./Pods/*" -print0 | xargs -0 sed -i '' '/MedianIcons/d'
+          
+          # 2. Delete GoNativeCore imports
+          find . -type f \\( -name "*.h" -o -name "*.m" \\) -not -path "./Pods/*" -print0 | xargs -0 sed -i '' '/GoNativeCore/d'
           
           echo "✅ Imports removed."
 
@@ -69,7 +74,7 @@ jobs:
           cd ios
           pod install --repo-update || true
 
-      # 6. MASTER PATCH (Privacy + Identity + Tendies)
+      # 6. MASTER PATCH
       - name: Apply Master Patch
         run: |
           cd ios
@@ -81,7 +86,6 @@ jobs:
           # B. Modify Info.plist
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
-            # Identity
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
             
@@ -114,7 +118,6 @@ jobs:
              BUILD_ARG="-project $PROJECT"; SCHEME=$(basename "$PROJECT" .xcodeproj)
           fi
           
-          # Force build to ignore missing modules if possible (gcc flags)
           xcodebuild build \
             $BUILD_ARG \
             -scheme "$SCHEME" \
@@ -152,5 +155,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-Surgery-App
+          name: CAPlayground-SafeSurgery-App
           path: ios/${{ env.IPA_NAME }}
