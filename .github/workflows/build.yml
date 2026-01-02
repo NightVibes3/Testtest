@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Real Device Final)
+name: CAPlayground V6 (Ironclad Real Device Final)
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
           fi
 
       # 2. PROJECT SURGERY (Python Deep Clean)
-      # This fixes the 'GoogleService-Info.plist' crash and disables signing for real devices
+      # This removes missing Google files and disables strict signing so the build finishes.
       - name: Project Surgery
         run: |
           cd ios
@@ -38,34 +38,32 @@ jobs:
                       lines = f.readlines()
                   with open(proj_path, 'w') as f:
                       for line in lines:
-                          # Strip missing Google references [web:56]
-                          if 'GoogleService-Info.plist' in line:
-                              continue
-                          # Force disable signing [conversation_history:6]
+                          if 'GoogleService-Info.plist' in line: continue
                           line = line.replace('CODE_SIGNING_ALLOWED = YES', 'CODE_SIGNING_ALLOWED = NO')
                           line = line.replace('CODE_SIGNING_REQUIRED = YES', 'CODE_SIGNING_REQUIRED = NO')
                           f.write(line)
           "
-          # Bypass Pod sync checks [memory:32]
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} + || true
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} + || true
 
-      # 3. MASTER PATCH (Precise Surgery for .tendies)
-      - name: Apply Master Patch
+      # 3. IRONCLAD PATCH (Extension & Identity)
+      # This forces the .tendies extension and enables the Files App support.
+      - name: Apply Ironclad Patch
         run: |
           cd ios
-          echo "🎨 Applying Identity & Extension Patches..."
-          
-          # A. FIX .ZIP BUG [memory:21]
-          find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
-          find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
-          
-          # B. FORCE .TENDIES (Internal Injection)
-          # Fixes the 'expected method body' crash by injecting AFTER the method header [memory:43]
-          find . -name "LEANWebViewController.m" -exec sed -i '' '/decideDestinationUsingResponse/a \
-          suggestedFilename = [suggestedFilename stringByAppendingPathExtension:@"tendies"];'  {} + || true
+          echo "🎨 Applying Ironclad Patches..."
 
-          # C. IDENTITY & PERMISSIONS (Files App) [memory:18]
+          # Force removal of old .zip logic [memory:21]
+          find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
+
+          # Ironclad .tendies force (Bypasses system guessing) [web:101]
+          find . -name "LEANWebViewController.m" -exec sed -i '' '/decideDestinationUsingResponse/a \
+          NSString *fixedName = [suggestedFilename stringByDeletingPathExtension]; \
+          fixedName = [fixedName stringByAppendingPathExtension:@"tendies"]; \
+          NSURL *destination = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:fixedName]; \
+          completionHandler(destination); return;' {} + || true
+
+          # Identity & Files App Permissions [memory:18]
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" || true
@@ -81,9 +79,7 @@ jobs:
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
           
-          echo "🚀 Building $WORKSPACE for REAL DEVICE (iphoneos)..."
-          
-          # We use iphoneos to fix the 'incompatible platform' error you saw in LiveContainer [memory:31]
+          # We use iphoneos to ensure compatibility with your iPhone 17,3 [memory:31]
           xcodebuild build \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -101,7 +97,6 @@ jobs:
         run: |
           cd ios
           mkdir Payload
-          # Finds the app in the Release-iphoneos folder
           APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
@@ -110,6 +105,7 @@ jobs:
           fi
           
           cp -r "$APP_PATH" Payload/
+          # SideStore/AltStore will provide their own signature upon install [memory:16]
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
           
           zip -r -y -X "CAPlayground_Final.ipa" Payload
@@ -119,5 +115,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-RealDevice-IPA
+          name: CAPlayground-RealDevice-Final
           path: ios/CAPlayground_Final.ipa
