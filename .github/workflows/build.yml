@@ -16,17 +16,17 @@ jobs:
           lfs: true
           fetch-depth: 0
 
-      - name: Verify File Exists
-        run: ls -la
-
-      - name: Extract Source Code
-        run: tar -xzf ios_source.tar.gz
+      # FIX: Remove the problematic 'git@github.com' source line from Podfile
+      - name: Fix Podfile Source
+        run: |
+          cd ios
+          # This command deletes the line starting with 'source' that contains 'gonative-specs'
+          sed -i '' '/gonative-specs/d' Podfile
+          # Optional: Print Podfile to verify
+          cat Podfile
 
       - name: Install Pods
         run: |
-          # We assume the tar extracts a folder named 'ios'
-          # If the extraction creates a different folder, 'ls' below will show us.
-          ls -R
           cd ios
           pod install --repo-update
 
