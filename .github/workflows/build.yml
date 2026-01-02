@@ -1,4 +1,4 @@
-name: CAPlayground V11 (Safe Surgery)
+name: CAPlayground V12 (Simple Fix)
 
 on:
   push:
@@ -32,9 +32,9 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ios/Pods
-          key: ${{ runner.os }}-pods-v11-${{ hashFiles('ios/Podfile.lock') }}
+          key: ${{ runner.os }}-pods-v12-${{ hashFiles('ios/Podfile.lock') }}
           restore-keys: |
-            ${{ runner.os }}-pods-v11-
+            ${{ runner.os }}-pods-v12-
 
       # 3. FIX PODFILE
       - name: Fix Podfile & Sources
@@ -50,21 +50,29 @@ jobs:
             fi
           fi
 
-      # 4. CODE SURGERY (Safe Mode)
-      # Removes imports of missing libs, ignoring the Pods folder to avoid errors
+      # 4. CODE SURGERY (Simplified)
+      # Removes imports of missing libs without complex 'find' syntax
       - name: Remove Broken Imports
         run: |
           cd ios
-          echo "🔪 Removing missing module imports (ignoring Pods)..."
+          echo "🔪 Removing missing module imports..."
           
-          # Find files safely (-print0) and exclude Pods directory
-          # We only look in your source code folders (usually named after the app or 'LeanIOS')
+          # Simple recursive grep + sed that is robust against shell syntax errors
+          # We check if the file is NOT in Pods before running sed
           
-          # 1. Delete MedianIcons imports
-          find . -type f \\( -name "*.h" -o -name "*.m" \\) -not -path "./Pods/*" -print0 | xargs -0 sed -i '' '/MedianIcons/d'
-          
-          # 2. Delete GoNativeCore imports
-          find . -type f \\( -name "*.h" -o -name "*.m" \\) -not -path "./Pods/*" -print0 | xargs -0 sed -i '' '/GoNativeCore/d'
+          grep -rl "MedianIcons" . | while read file; do
+            if [[ "$file" != *"Pods"* ]]; then
+              echo "   Cleaned: $file"
+              sed -i '' '/MedianIcons/d' "$file"
+            fi
+          done
+
+          grep -rl "GoNativeCore" . | while read file; do
+            if [[ "$file" != *"Pods"* ]]; then
+              echo "   Cleaned: $file"
+              sed -i '' '/GoNativeCore/d' "$file"
+            fi
+          done
           
           echo "✅ Imports removed."
 
@@ -155,5 +163,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-SafeSurgery-App
+          name: CAPlayground-V12-App
           path: ios/${{ env.IPA_NAME }}
