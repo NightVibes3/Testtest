@@ -16,8 +16,14 @@ jobs:
           lfs: true
 
       # 1. Extract the source code
+      # (Ensure ios_source.tar.gz exists in your repo root, or remove this if files are already unzipped)
       - name: Extract Source Code
-        run: tar -xzf ios_source.tar.gz
+        run: |
+          if [ -f "ios_source.tar.gz" ]; then
+            tar -xzf ios_source.tar.gz
+          else
+            echo "⚠️ ios_source.tar.gz not found. Assuming code is already in 'ios' folder."
+          fi
 
       # 2. PATCH THE SOURCE CODE
       # This deletes the line that adds .zip and ensures .tendies / .ca are preserved
@@ -35,12 +41,13 @@ jobs:
           echo "Source code patched."
 
       # 3. Build the App
+      # FIXED: Changed "CAPlaygrounds" to "CAPlayground" (Singular)
       - name: Build App
         run: |
           cd ios
           xcodebuild build \
-            -workspace "CAPlaygrounds.xcworkspace" \
-            -scheme "CAPlaygrounds" \
+            -workspace "CAPlayground.xcworkspace" \
+            -scheme "CAPlayground" \
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath build/ \
@@ -49,16 +56,17 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
 
       # 4. Package the IPA
+      # FIXED: Changed "CAPlaygrounds.app" to "CAPlayground.app" (Singular)
       - name: Package IPA
         run: |
           cd ios
           mkdir Payload
-          cp -r build/Build/Products/Release-iphoneos/CAPlaygrounds.app Payload/
-          zip -r -y CAPlaygrounds.ipa Payload
+          cp -r build/Build/Products/Release-iphoneos/CAPlayground.app Payload/
+          zip -r -y CAPlayground.ipa Payload
 
       # 5. Upload the Result
       - name: Upload Fixed IPA
         uses: actions/upload-artifact@v4
         with:
           name: Fixed-Tendies-IPA
-          path: ios/CAPlaygrounds.ipa
+          path: ios/CAPlayground.ipa
