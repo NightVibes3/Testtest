@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Identity Shift + Fix)
+name: CAPlayground V6 (Final Identity Shift)
 
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
         with:
           lfs: true
 
-      # 1. EXTRACT SOURCE (Handles your .tar.gz)
+      # 1. EXTRACT SOURCE
       - name: Extract Source
         run: |
           if [ -f "ios_source.tar.gz" ]; then
@@ -23,65 +23,50 @@ jobs:
           elif [ -d "ios" ]; then
             echo "📂 Using existing 'ios' folder."
           else
-            echo "❌ Error: No source found (ios_source.tar.gz or ios folder missing)."
+            echo "❌ Error: No source found."
             exit 1
           fi
 
-      # 2. BYPASS POD INSTALL (THE FIX for your error)
-      # We skip 'pod install' to avoid the private repo login error.
-      # instead, we patch the build scripts so Xcode doesn't complain.
+      # 2. BYPASS POD INSTALL (Fixes Private Repo Error)
       - name: Bypass Pod Install
         run: |
           cd ios
-          echo "🚫 Skipping 'pod install' to avoid Private Repo errors..."
-          
-          # Remove the 'diff' check that crashes the build if Pods aren't synced
+          echo "🚫 Skipping pod install to avoid private repo login errors..."
+          # Tell Xcode not to check the Pods Manifest
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} +
-          
-          # Remove the check for Manifest.lock
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} +
-          
-          echo "✅ Bypass complete. Using local Pods."
 
-      # 3. IDENTITY SHIFT (Renames App & Fixes Tendies)
+      # 3. MASTER PATCH (Identity Shift & Tendies Fix)
       - name: Apply Master Patch
         run: |
           cd ios
           echo "🎨 Starting Identity Shift..."
 
-          # A. FIX TENDIES (.zip bug removal)
-          # Removes the code that forces .zip extension so .tendies works
+          # A. Fix .tendies .zip bug (Removes forced zip extensions)
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
           find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
 
-          # B. RENAME APP & SET PERMISSIONS
+          # B. Modify Info.plist (Name, ID, Permissions)
           PLIST=$(find . -name "Info.plist" | head -n 1)
-          
           if [ -n "$PLIST" ]; then
-            echo "   📝 Editing $PLIST..."
-            
-            # Set Name to CAPlayground
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
-            
-            # Set ID to com.nightvibes3.caplayground
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
-            
-            # Enable File Sharing (For dragging .tendies into the app)
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled true" "$PLIST"
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
-            
-            echo "   ✅ Identity Shift Complete."
           fi
 
-      # 4. BUILD APP (Unsigned / Performance Mode)
+      # 4. BUILD APP (Auto-detect Workspace & Scheme)
       - name: Build App
         run: |
           cd ios
-          # Automatically find the Workspace
+          # Auto-find the workspace (handles CAPlayground vs CAPlaygrounds)
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
-          SCHEME="CAPlayground" 
           
-          echo "🚀 Building $WORKSPACE..."
+          # Auto-find the correct Scheme name
+          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
+          
+          echo "🚀 Building Workspace: $WORKSPACE"
+          echo "🚀 Using Scheme: $SCHEME"
           
           xcodebuild build \
             -workspace "$WORKSPACE" \
@@ -93,15 +78,15 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            SWIFT_COMPILATION_MODE=wholemodule
+            SWIFT_COMPILATION_MODE=wholemodule \
+            GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
+            STRIP_INSTALLED_PRODUCT=YES
 
       # 5. PACKAGE IPA
       - name: Package IPA
         run: |
           cd ios
           mkdir Payload
-          
-          # Find the built .app file
           APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
@@ -111,10 +96,10 @@ jobs:
           
           cp -r "$APP_PATH" Payload/
 
-          # Clean Signature (Vital for SideStore)
+          # Clean Signature for SideStore
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
           
-          IPA_NAME="CAPlayground_v6_IdentityShift.ipa"
+          IPA_NAME="CAPlayground_v1.0.${{ github.run_number }}.ipa"
           zip -r -y -X "$IPA_NAME" Payload
 
           echo "IPA_NAME=$IPA_NAME" >> $GITHUB_ENV
