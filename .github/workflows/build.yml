@@ -1,4 +1,4 @@
-name: CAPlayground V15 (Safe PBX Edit)
+name: CAPlayground V6 (Identity Shift)
 
 on:
   push:
@@ -27,84 +27,83 @@ jobs:
             exit 1
           fi
 
-      # 2. MASTER PATCH (Source Code Only)
+      # 2. CACHE PODS
+      - name: Cache CocoaPods
+        uses: actions/cache@v3
+        with:
+          path: ios/Pods
+          key: ${{ runner.os }}-pods-v6-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-v6-
+
+      # 3. INSTALL PODS
+      - name: Install Pods
+        run: |
+          cd ios
+          if [ -f "Podfile" ]; then
+            pod install || pod install --repo-update
+          fi
+
+      # 4. MASTER PATCH (The "Identity Shift")
       - name: Apply Master Patch
         run: |
           cd ios
+          echo "🎨 Starting Identity Shift..."
+
           # A. Fix Median .zip bug
+          # We use a loop to be thorough
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
           find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
 
-          # B. Remove MedianIcons Imports
-          grep -rl "MedianIcons" . | while read file; do
-            if [[ "$file" != *"Pods"* ]]; then
-              sed -i '' '/MedianIcons/d' "$file"
-            fi
-          done
-
-      # 3. SAFE PROJECT EDITING (Python)
-      # This replaces the dangerous 'sed' commands on project.pbxproj
-      - name: Safe Project Fix
-        run: |
-          cd ios
-          PROJECT=$(find . -name "*.xcodeproj" | head -n 1)
-          PBXPROJ="$PROJECT/project.pbxproj"
-          
-          echo "🐍 Running Python to safely edit $PBXPROJ..."
-          
-          cat <<EOF > fix_project.py
-          import sys
-          
-          path = sys.argv[1]
-          
-          with open(path, 'r', encoding='utf-8') as f:
-              lines = f.readlines()
-          
-          new_lines = []
-          for line in lines:
-              # 1. Remove Entitlements (Fixes SideStore install)
-              if "CODE_SIGN_ENTITLEMENTS" in line:
-                  continue
-              # 2. Remove Pods Manifest Check (Fixes Pod mismatch error)
-              if "Check Pods Manifest.lock" in line:
-                  continue
-              # 3. Remove the shell script block execution for the manifest check
-              if "ShellScript" in line and "Manifest.lock" in line:
-                  continue
-              
-              new_lines.append(line)
-          
-          with open(path, 'w', encoding='utf-8') as f:
-              f.writelines(new_lines)
-          
-          print("✅ Project file patched successfully.")
-          EOF
-          
-          python3 fix_project.py "$PBXPROJ"
-
-      # 4. MODIFY INFO.PLIST
-      - name: Modify Info.plist
-        run: |
-          cd ios
-          PLIST=$(find . -name "Info.plist" | head -n 1)
-          if [ -n "$PLIST" ]; then
-            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
-            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
-            /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled true" "$PLIST"
-            /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
+          # B. VERIFY PATCH (Safety Check)
+          # If the bad code is still there, we fail the build immediately.
+          if grep -r "stringByAppendingPathExtension:@\"zip\"" .; then
+            echo "❌ CRITICAL: The .zip patch failed! Bad code still exists."
+            exit 1
+          else
+            echo "✅ Patch verified: No forced .zip extensions found."
           fi
 
-      # 5. BUILD APP
+          # C. Modify Info.plist (Name, ID, Permissions)
+          PLIST=$(find . -name "Info.plist" | head -n 1)
+          
+          if [ -n "$PLIST" ]; then
+            echo "   📝 Editing $PLIST..."
+            
+            # 1. Rename App
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
+            
+            # 2. Change Bundle ID (Makes it YOUR app)
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
+            
+            # 3. Set Version (1.0.RunNumber)
+            BUILD_NUM="${{ github.run_number }}"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$PLIST"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.$BUILD_NUM" "$PLIST"
+
+            # 4. Enable File Sharing
+            /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled true" "$PLIST"
+            /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
+            
+            echo "   ✅ Identity Shift Complete: com.nightvibes3.caplayground v1.0.$BUILD_NUM"
+          fi
+
+      # 5. BUILD (High Performance Mode)
       - name: Build App
         run: |
           cd ios
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
-          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          if [ -n "$WORKSPACE" ]; then
+             BUILD_ARG="-workspace $WORKSPACE"; SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          else
+             PROJECT=$(find . -maxdepth 1 -name "*.xcodeproj" | head -n 1)
+             BUILD_ARG="-project $PROJECT"; SCHEME=$(basename "$PROJECT" .xcodeproj)
+          fi
           
-          echo "🚀 Building $SCHEME..."
+          echo "🚀 Building $SCHEME (Performance Mode)..."
           
           xcodebuild build \
-            -workspace "$WORKSPACE" \
+            $BUILD_ARG \
             -scheme "$SCHEME" \
             -sdk iphoneos \
             -configuration Release \
@@ -113,10 +112,11 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
+            SWIFT_COMPILATION_MODE=wholemodule \
             GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
             STRIP_INSTALLED_PRODUCT=YES
 
-      # 6. PACKAGE IPA
+      # 6. PACKAGE
       - name: Package IPA
         run: |
           cd ios
@@ -129,6 +129,8 @@ jobs:
           fi
           
           cp -r "$APP_PATH" Payload/
+
+          # Clean Signature for SideStore
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
           
           IPA_NAME="CAPlayground_v1.0.${{ github.run_number }}.ipa"
@@ -140,5 +142,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-V15-App
+          name: CAPlayground-GodTier-App
           path: ios/${{ env.IPA_NAME }}
