@@ -15,29 +15,12 @@ jobs:
         with:
           lfs: true
 
+      # 1. Extract the archive (this provides the 'ios' folder with 'Pods' already inside)
       - name: Extract Source Code
         run: tar -xzf ios_source.tar.gz
 
-      - name: Fix Podfile for Local Pods
-        run: |
-          cd ios
-          # 1. Remove the private source line
-          sed -i '' '/gonative-specs/d' Podfile
-          
-          # 2. Tell Podfile to use the local MedianIcons and GoNativeCore already in your folder
-          # This replaces the standard pod lines with local path references
-          sed -i '' "s/pod 'MedianIcons'/pod 'MedianIcons', :path => 'Pods\/MedianIcons'/g" Podfile
-          sed -i '' "s/pod 'GoNativeCore'/pod 'GoNativeCore', :path => 'Pods\/GoNativeCore'/g" Podfile
-          
-          echo "Updated Podfile:"
-          cat Podfile
-
-      - name: Install Pods
-        run: |
-          cd ios
-          # We use --no-repo-update because we are using the local files you already have
-          pod install
-
+      # 2. Skip 'pod install' and go straight to building
+      # We just need to make sure the build environment is ready
       - name: Build App
         run: |
           cd ios
@@ -47,16 +30,21 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath build/ \
+            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
+      # 3. Package the IPA
       - name: Package IPA
         run: |
           cd ios
           mkdir Payload
+          # Move the compiled app into Payload
           cp -r build/Build/Products/Release-iphoneos/CAPlaygrounds.app Payload/
+          # Create the IPA (preserving symlinks)
           zip -r -y CAPlaygrounds.ipa Payload
 
+      # 4. Upload the IPA
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
