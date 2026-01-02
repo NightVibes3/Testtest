@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Final Sideload Ready)
+name: CAPlayground V6 (Precise Surgery Build)
 
 on:
   push:
@@ -35,20 +35,23 @@ jobs:
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} + || true
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} + || true
 
-      # 3. MASTER PATCH (Hard-Force .tendies & Identity)
+      # 3. MASTER PATCH (Precise Surgery - Identity & Tendies)
       - name: Apply Master Patch
         run: |
           cd ios
-          echo "🎨 Applying Identity & Extension Patches..."
-          
-          # A. FIX .ZIP BUG [memory:21]
+          echo "🎨 Starting Precise Surgery..."
+
+          # A. FIX .ZIP BUG (The basic fix) [memory:21]
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
           find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
-          
-          # B. FORCE .TENDIES NAME [memory:43]
-          find . -name "LEANWebViewController.m" -exec sed -i '' 's/suggestedFilename/@"export.tendies"/g' {} + || true
 
-          # C. IDENTITY & PERMISSIONS [memory:18]
+          # B. FORCE .TENDIES (Internal Injection)
+          # We inject the force-extension INSIDE the method body [memory:43]
+          # This fixes the 'expected method body' crash you just had.
+          find . -name "LEANWebViewController.m" -exec sed -i '' '/decideDestinationUsingResponse/a \
+          suggestedFilename = [suggestedFilename stringByAppendingPathExtension:@"tendies"];' {} + || true
+
+          # C. IDENTITY & PERMISSIONS (Files App & Custom ID) [memory:18]
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" || true
@@ -66,7 +69,7 @@ jobs:
           
           echo "🚀 Building $WORKSPACE with Scheme $SCHEME (Safe Mode)..."
           
-          # We use iponesimulator + arm64 to trick Xcode into skipping physical signing checks
+          # Using iphonesimulator + arm64 to trick Xcode into skipping physical signing checks [web:76]
           xcodebuild build \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -75,9 +78,8 @@ jobs:
             -derivedDataPath build/ \
             ARCHS="arm64" \
             VALID_ARCHS="arm64" \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
             ENABLE_BITCODE=NO
 
@@ -86,7 +88,7 @@ jobs:
         run: |
           cd ios
           mkdir Payload
-          # Finds the app regardless of which build folder Xcode chose
+          # Finds the app regardless of build folder
           APP_PATH=$(find build/Build/Products -name "*.app" | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
