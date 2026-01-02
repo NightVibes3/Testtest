@@ -29,23 +29,19 @@ jobs:
         run: |
           cd ios
           echo "🔧 Adding WKDownloadDelegate handler to LEANWebViewController.m..."
-          
-          python3 << 'PYTHON_SCRIPT'
+          python3 << 'EOF'
           import os
           
-          # Find LEANWebViewController.m
           for root, dirs, files in os.walk('.'):
               if 'LEANWebViewController.m' in files:
                   filepath = os.path.join(root, 'LEANWebViewController.m')
                   with open(filepath, 'r') as f:
                       content = f.read()
                   
-                  # Check if the handler already exists
                   if 'decideDestinationUsingResponse' in content:
-                      print(f"✅ Handler already exists in {filepath}")
+                      print(f"Handler already exists in {filepath}")
                   else:
-                      # The handler code to inject
-                      handler_code = '''
+                      handler_code = """
 - (void)download:(nonnull WKDownload *)download 
 decideDestinationUsingResponse:(nonnull NSURLResponse *)response 
 suggestedFilename:(nonnull NSString *)suggestedFilename 
@@ -57,22 +53,19 @@ API_AVAILABLE(ios(15.0)) {
     NSURL *url = [documentsDir URLByAppendingPathComponent:fixedName];
     completionHandler(url);
 }
-'''
-                      # Find @end at the end of the file and insert before it
+"""
                       if '@end' in content:
                           content = content.replace('@end', handler_code + '\n@end')
                           with open(filepath, 'w') as f:
                               f.write(content)
-                          print(f"✅ Added WKDownloadDelegate handler to {filepath}")
-                      else:
-                          print(f"⚠️ Could not find @end in {filepath}")
-          PYTHON_SCRIPT
+                          print(f"Added WKDownloadDelegate handler to {filepath}")
+          EOF
 
-      # 3. PROJECT SURGERY (Python Deep Clean)
+      # 3. PROJECT SURGERY
       - name: Project Surgery
         run: |
           cd ios
-          python3 -c "
+          python3 << 'EOF'
           import os
           for root, dirs, files in os.walk('.'):
               if 'project.pbxproj' in files:
@@ -81,12 +74,13 @@ API_AVAILABLE(ios(15.0)) {
                       lines = f.readlines()
                   with open(proj_path, 'w') as f:
                       for line in lines:
-                          if 'GoogleService-Info.plist' in line: continue
+                          if 'GoogleService-Info.plist' in line:
+                              continue
                           line = line.replace('CODE_SIGNING_ALLOWED = YES', 'CODE_SIGNING_ALLOWED = NO')
                           line = line.replace('CODE_SIGNING_REQUIRED = YES', 'CODE_SIGNING_REQUIRED = NO')
                           line = line.replace('SDKROOT = iphonesimulator', 'SDKROOT = iphoneos')
                           f.write(line)
-          "
+          EOF
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} + || true
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} + || true
 
