@@ -1,4 +1,4 @@
-name: Build Fixed Tendies and CA App
+name: CAPlayground V7 (Crash Proof)
 
 on:
   push:
@@ -6,67 +6,149 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-ios:
     runs-on: macos-latest
-
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           lfs: true
 
-      # 1. Extract the source code
-      # (Ensure ios_source.tar.gz exists in your repo root, or remove this if files are already unzipped)
-      - name: Extract Source Code
+      # 1. EXTRACT
+      - name: Extract Source
         run: |
           if [ -f "ios_source.tar.gz" ]; then
             tar -xzf ios_source.tar.gz
+          elif [ -d "ios" ]; then
+            echo "📂 Using existing 'ios' folder."
           else
-            echo "⚠️ ios_source.tar.gz not found. Assuming code is already in 'ios' folder."
+            echo "❌ Error: No source found."
+            exit 1
           fi
 
-      # 2. PATCH THE SOURCE CODE
-      # This deletes the line that adds .zip and ensures .tendies / .ca are preserved
-      - name: Patch Download Logic
+      # 2. CACHE PODS
+      - name: Cache CocoaPods
+        uses: actions/cache@v3
+        with:
+          path: ios/Pods
+          key: ${{ runner.os }}-pods-v7-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-v7-
+
+      # 3. INSTALL PODS
+      - name: Install Pods
         run: |
           cd ios
-          echo "Patching source to fix .tendies and .ca renaming..."
-          
-          # Remove the 'zip' extension forcing in the main webview controller
-          find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
-          
-          # Remove the 'zip' extension forcing in the JS Bridge
-          find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
-          
-          echo "Source code patched."
+          if [ -f "Podfile" ]; then
+            pod install || pod install --repo-update
+          fi
 
-      # 3. Build the App
-      # FIXED: Changed "CAPlaygrounds" to "CAPlayground" (Singular)
+      # 4. MASTER PATCH (Privacy + Identity + Tendies)
+      - name: Apply Master Patch
+        run: |
+          cd ios
+          echo "🛡️ Starting Crash-Proof Patching..."
+
+          # A. Fix Median .zip bug
+          find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
+          find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
+
+          # B. Verify Patch
+          if grep -r "stringByAppendingPathExtension:@\"zip\"" .; then
+             echo "❌ CRITICAL: .zip patch failed."
+             exit 1
+          fi
+
+          # C. Modify Info.plist (The "Anti-Crash" Step)
+          PLIST=$(find . -name "Info.plist" | head -n 1)
+          
+          if [ -n "$PLIST" ]; then
+            echo "   📝 Hardening $PLIST..."
+            
+            # 1. Identity
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
+            
+            # 2. Privacy Keys (Prevents Instant Crashes)
+            # iOS requires these to exist if the code *might* access them.
+            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Save wallpapers and load .tendies files.'" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Required for AR features.'" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string 'Save exported wallpapers.'" "$PLIST" 2>/dev/null || true
+
+            # 3. File Sharing
+            /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled true" "$PLIST"
+            /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
+
+            echo "   ✅ Privacy Keys & Sharing Enabled."
+          fi
+
+      # 5. NEUTRALIZE ENTITLEMENTS (The "SideStore" Step)
+      # This removes restricted capabilities that break free developer accounts.
+      - name: Strip Entitlements
+        run: |
+          cd ios
+          echo "🧹 Neutralizing Entitlements..."
+          PROJECT=$(find . -name "*.xcodeproj" | head -n 1)
+          
+          # Remove the 'CODE_SIGN_ENTITLEMENTS' setting from the project file entirely
+          # This forces Xcode to build a "vanilla" app that SideStore can sign easily.
+          sed -i '' '/CODE_SIGN_ENTITLEMENTS/d' "$PROJECT/project.pbxproj"
+          
+          echo "✅ Entitlements stripped from project settings."
+
+      # 6. BUILD
       - name: Build App
         run: |
           cd ios
+          WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
+          if [ -n "$WORKSPACE" ]; then
+             BUILD_ARG="-workspace $WORKSPACE"; SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          else
+             PROJECT=$(find . -maxdepth 1 -name "*.xcodeproj" | head -n 1)
+             BUILD_ARG="-project $PROJECT"; SCHEME=$(basename "$PROJECT" .xcodeproj)
+          fi
+          
+          echo "🚀 Building $SCHEME..."
+          
           xcodebuild build \
-            -workspace "CAPlayground.xcworkspace" \
-            -scheme "CAPlayground" \
+            $BUILD_ARG \
+            -scheme "$SCHEME" \
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath build/ \
+            -arch arm64 \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
+            STRIP_INSTALLED_PRODUCT=YES
 
-      # 4. Package the IPA
-      # FIXED: Changed "CAPlaygrounds.app" to "CAPlayground.app" (Singular)
+      # 7. PACKAGE & CLEAN
       - name: Package IPA
         run: |
           cd ios
           mkdir Payload
-          cp -r build/Build/Products/Release-iphoneos/CAPlayground.app Payload/
-          zip -r -y CAPlayground.ipa Payload
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ Build failed."
+            exit 1
+          fi
+          
+          cp -r "$APP_PATH" Payload/
 
-      # 5. Upload the Result
-      - name: Upload Fixed IPA
+          # Clean Signature
+          rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
+          
+          IPA_NAME="CAPlayground_v1.0.${{ github.run_number }}.ipa"
+          zip -r -y -X "$IPA_NAME" Payload
+
+          echo "IPA_NAME=$IPA_NAME" >> $GITHUB_ENV
+
+      # 8. UPLOAD
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Fixed-Tendies-IPA
-          path: ios/CAPlayground.ipa
+          name: CAPlayground-CrashProof-App
+          path: ios/${{ env.IPA_NAME }}
