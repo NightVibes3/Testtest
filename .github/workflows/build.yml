@@ -1,0 +1,53 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:  # Allows you to click a button to run manually
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # STEP 1: Extract the tar file
+      # (If you uploaded the 'ios' folder directly, DELETE this step)
+      - name: Extract Source Code
+        run: tar -xzf ios_source.tar.gz
+
+      # STEP 2: Install Dependencies
+      - name: Install Pods
+        run: |
+          cd ios
+          pod install --repo-update
+
+      # STEP 3: Build the App
+      - name: Build App
+        run: |
+          cd ios
+          xcodebuild build \
+            -workspace "CAPlaygrounds.xcworkspace" \
+            -scheme "CAPlaygrounds" \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build/ \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      # STEP 4: Package the IPA
+      - name: Package IPA
+        run: |
+          cd ios
+          mkdir Payload
+          cp -r build/Build/Products/Release-iphoneos/CAPlaygrounds.app Payload/
+          zip -r -y CAPlaygrounds.ipa Payload
+
+      # STEP 5: Upload the Result
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: CAPlaygrounds-IPA
+          path: ios/CAPlaygrounds.ipa
