@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Precise Surgery Build)
+name: CAPlayground V6 (Real Device Final)
 
 on:
   push:
@@ -24,34 +24,48 @@ jobs:
             echo "📂 Using existing folder."
           fi
 
-      # 2. STRIP PROJECT ERRORS (Google & Pod Fixes)
-      - name: Strip Project Errors
+      # 2. PROJECT SURGERY (Python Deep Clean)
+      # This fixes the 'GoogleService-Info.plist' crash and disables signing for real devices
+      - name: Project Surgery
         run: |
           cd ios
-          echo "🚫 Removing Missing References..."
-          # Fix the Missing GoogleService-Info.plist error [web:56]
-          find . -name "project.pbxproj" -exec sed -i '' '/GoogleService-Info.plist/d' {} + || true
-          # Fix the Pod Manifest errors [memory:32]
+          python3 -c "
+          import os
+          for root, dirs, files in os.walk('.'):
+              if 'project.pbxproj' in files:
+                  proj_path = os.path.join(root, 'project.pbxproj')
+                  with open(proj_path, 'r') as f:
+                      lines = f.readlines()
+                  with open(proj_path, 'w') as f:
+                      for line in lines:
+                          # Strip missing Google references [web:56]
+                          if 'GoogleService-Info.plist' in line:
+                              continue
+                          # Force disable signing [conversation_history:6]
+                          line = line.replace('CODE_SIGNING_ALLOWED = YES', 'CODE_SIGNING_ALLOWED = NO')
+                          line = line.replace('CODE_SIGNING_REQUIRED = YES', 'CODE_SIGNING_REQUIRED = NO')
+                          f.write(line)
+          "
+          # Bypass Pod sync checks [memory:32]
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} + || true
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} + || true
 
-      # 3. MASTER PATCH (Precise Surgery - Identity & Tendies)
+      # 3. MASTER PATCH (Precise Surgery for .tendies)
       - name: Apply Master Patch
         run: |
           cd ios
-          echo "🎨 Starting Precise Surgery..."
-
-          # A. FIX .ZIP BUG (The basic fix) [memory:21]
+          echo "🎨 Applying Identity & Extension Patches..."
+          
+          # A. FIX .ZIP BUG [memory:21]
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
           find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} + || true
-
+          
           # B. FORCE .TENDIES (Internal Injection)
-          # We inject the force-extension INSIDE the method body [memory:43]
-          # This fixes the 'expected method body' crash you just had.
+          # Fixes the 'expected method body' crash by injecting AFTER the method header [memory:43]
           find . -name "LEANWebViewController.m" -exec sed -i '' '/decideDestinationUsingResponse/a \
-          suggestedFilename = [suggestedFilename stringByAppendingPathExtension:@"tendies"];' {} + || true
+          suggestedFilename = [suggestedFilename stringByAppendingPathExtension:@"tendies"];'  {} + || true
 
-          # C. IDENTITY & PERMISSIONS (Files App & Custom ID) [memory:18]
+          # C. IDENTITY & PERMISSIONS (Files App) [memory:18]
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" || true
@@ -60,36 +74,35 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" || true
           fi
 
-      # 4. BUILD APP (Safe-Architecture Mode)
+      # 4. BUILD APP (REAL DEVICE MODE)
       - name: Build App
         run: |
           cd ios
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
           
-          echo "🚀 Building $WORKSPACE with Scheme $SCHEME (Safe Mode)..."
+          echo "🚀 Building $WORKSPACE for REAL DEVICE (iphoneos)..."
           
-          # Using iphonesimulator + arm64 to trick Xcode into skipping physical signing checks [web:76]
+          # We use iphoneos to fix the 'incompatible platform' error you saw in LiveContainer [memory:31]
           xcodebuild build \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
-            -sdk iphonesimulator \
+            -sdk iphoneos \
             -configuration Release \
             -derivedDataPath build/ \
-            ARCHS="arm64" \
-            VALID_ARCHS="arm64" \
-            CODE_SIGNING_ALLOWED=NO \
+            -arch arm64 \
+            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            ENABLE_BITCODE=NO
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
-      # 5. PACKAGE IPA (Universal Finder)
+      # 5. PACKAGE IPA
       - name: Package IPA
         run: |
           cd ios
           mkdir Payload
-          # Finds the app regardless of build folder
-          APP_PATH=$(find build/Build/Products -name "*.app" | head -n 1)
+          # Finds the app in the Release-iphoneos folder
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
             echo "❌ Build failed. No .app found."
@@ -106,5 +119,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-Perfect-IPA
+          name: CAPlayground-RealDevice-IPA
           path: ios/CAPlayground_Final.ipa
