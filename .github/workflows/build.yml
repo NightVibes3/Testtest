@@ -1,4 +1,4 @@
-name: CAPlayground V6 (Hard-Force Tendies)
+name: CAPlayground V6 (Stable Hard-Force)
 
 on:
   push:
@@ -35,29 +35,29 @@ jobs:
           find . -name "*.sh" -exec sed -i '' '/diff/d' {} +
           find . -name "*.sh" -exec sed -i '' '/Manifest.lock/d' {} +
 
-      # 3. MASTER PATCH (Hard-Force .tendies & Identity Shift)
+      # 3. MASTER PATCH (Stable Identity & Tendies Force)
       - name: Apply Master Patch
         run: |
           cd ios
-          echo "🎨 Starting Hard-Force Identity Shift..."
+          echo "🎨 Starting Stable Identity Shift..."
 
           # A. REMOVE .ZIP BUG
-          # Deletes the code that forces .zip extensions [memory:21]
           find . -name "LEANWebViewController.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
           find . -name "GNJSBridgeInterface.m" -exec sed -i '' 's/stringByAppendingPathExtension:@"zip"//g' {} +
 
-          # B. FORCE .TENDIES FILENAME
-          # This overrides the "download" name and forces "export.tendies" [memory:43]
-          find . -name "LEANWebViewController.m" -exec sed -i '' 's/suggestedFilename/@"export.tendies"/g' {} +
+          # B. SMART TENDIES FORCE
+          # This ensures that if the file isn't .tendies, it gets slapped with the extension [memory:43]
+          find . -name "LEANWebViewController.m" -exec sed -i '' 's/suggestedFilename/([[suggestedFilename pathExtension] isEqualToString:@"tendies"] ? suggestedFilename : [suggestedFilename stringByAppendingPathExtension:@"tendies"])/g' {} +
 
-          # C. Modify Info.plist (Identity & Files App Support)
+          # C. FIX DUPLICATE FILES (Fixes Exit Code 65 Warning)
+          # Deletes duplicate InfoPlist.strings that cause build phase conflicts [conversation_history:21]
+          find . -name "InfoPlist.strings" -delete
+
+          # D. Modify Info.plist (Identity & Files App Support)
           PLIST=$(find . -name "Info.plist" | head -n 1)
           if [ -n "$PLIST" ]; then
-            # Rename App
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CAPlayground" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string CAPlayground" "$PLIST"
-            # Change Bundle ID
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.nightvibes3.caplayground" "$PLIST"
-            # Enable Files App Access [memory:18]
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled true" "$PLIST"
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
           fi
@@ -100,7 +100,7 @@ jobs:
           cp -r "$APP_PATH" Payload/
           rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
           
-          IPA_NAME="CAPlayground_v6_Fixed.ipa"
+          IPA_NAME="CAPlayground_v6_Stable.ipa"
           zip -r -y -X "$IPA_NAME" Payload
 
           echo "IPA_NAME=$IPA_NAME" >> $GITHUB_ENV
@@ -109,5 +109,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-HardForce-IPA
+          name: CAPlayground-Stable-IPA
           path: ios/${{ env.IPA_NAME }}
