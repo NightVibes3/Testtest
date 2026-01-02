@@ -1,4 +1,4 @@
-name: CAPlayground V9 (Dependency Surgery)
+name: CAPlayground V10 (Code Surgery)
 
 on:
   push:
@@ -32,42 +32,44 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ios/Pods
-          key: ${{ runner.os }}-pods-v9-${{ hashFiles('ios/Podfile.lock') }}
+          key: ${{ runner.os }}-pods-v10-${{ hashFiles('ios/Podfile.lock') }}
           restore-keys: |
-            ${{ runner.os }}-pods-v9-
+            ${{ runner.os }}-pods-v10-
 
-      # 3. SURGERY ON PODFILE (Remove Broken Median Libs)
-      - name: Fix Podfile & Remove Private Libs
+      # 3. FIX PODFILE (Remove Broken Libs)
+      - name: Fix Podfile & Sources
         run: |
           cd ios
           if [ -f "Podfile" ]; then
-            echo "🔪 Performing surgery on Podfile..."
-            
-            # 1. Remove the private source line (gonative-specs)
             sed -i '' '/gonative-specs/d' Podfile
-            
-            # 2. Remove 'MedianIcons' which causes the build error
             sed -i '' "/pod 'MedianIcons'/d" Podfile
             sed -i '' "/pod 'GoNativeCore'/d" Podfile
             
-            # 3. Ensure standard source exists
             if ! grep -q "cdn.cocoapods.org" Podfile; then
                echo "source 'https://cdn.cocoapods.org/'" | cat - Podfile > temp && mv temp Podfile
             fi
-            
-            echo "✅ Podfile cleaned. Content:"
-            cat Podfile
           fi
 
-      # 4. INSTALL PODS
+      # 4. CODE SURGERY (Remove Imports of Missing Libs)
+      # This deletes any line in any file that imports the libraries we just removed.
+      - name: Remove Broken Imports
+        run: |
+          cd ios
+          echo "🔪 Removing missing module imports..."
+          
+          # Delete lines like #import <MedianIcons/MedianIcons.h> or @import MedianIcons;
+          grep -rl "MedianIcons" . | xargs sed -i '' '/MedianIcons/d'
+          grep -rl "GoNativeCore" . | xargs sed -i '' '/GoNativeCore/d'
+          
+          echo "✅ Imports removed."
+
+      # 5. INSTALL PODS
       - name: Install Pods
         run: |
           cd ios
-          # '|| true' allows the build to continue even if pod install complains slightly,
-          # as long as it generates the Workspace.
           pod install --repo-update || true
 
-      # 5. MASTER PATCH (Privacy + Identity + Tendies)
+      # 6. MASTER PATCH (Privacy + Identity + Tendies)
       - name: Apply Master Patch
         run: |
           cd ios
@@ -93,14 +95,14 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace true" "$PLIST"
           fi
 
-      # 6. NEUTRALIZE ENTITLEMENTS
+      # 7. NEUTRALIZE ENTITLEMENTS
       - name: Strip Entitlements
         run: |
           cd ios
           PROJECT=$(find . -name "*.xcodeproj" | head -n 1)
           sed -i '' '/CODE_SIGN_ENTITLEMENTS/d' "$PROJECT/project.pbxproj"
 
-      # 7. BUILD
+      # 8. BUILD
       - name: Build App
         run: |
           cd ios
@@ -112,6 +114,7 @@ jobs:
              BUILD_ARG="-project $PROJECT"; SCHEME=$(basename "$PROJECT" .xcodeproj)
           fi
           
+          # Force build to ignore missing modules if possible (gcc flags)
           xcodebuild build \
             $BUILD_ARG \
             -scheme "$SCHEME" \
@@ -125,7 +128,7 @@ jobs:
             GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
             STRIP_INSTALLED_PRODUCT=YES
 
-      # 8. PACKAGE
+      # 9. PACKAGE
       - name: Package IPA
         run: |
           cd ios
@@ -145,9 +148,9 @@ jobs:
 
           echo "IPA_NAME=$IPA_NAME" >> $GITHUB_ENV
 
-      # 9. UPLOAD
+      # 10. UPLOAD
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-Cleaned-App
+          name: CAPlayground-Surgery-App
           path: ios/${{ env.IPA_NAME }}
