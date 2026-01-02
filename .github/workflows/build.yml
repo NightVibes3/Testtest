@@ -1,100 +1,106 @@
-name: CAPlayground V6 (MASTER BUILD)
+name: Build iOS
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
   build-ios:
     runs-on: macos-latest
-    
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           lfs: true
 
-      # 1. EXTRACT SOURCE
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Extract Source
         run: |
           if [ -f "ios_source.tar.gz" ]; then
             tar -xzf ios_source.tar.gz
-          else
-            echo "📂 No archive found, assuming sources are present."
           fi
 
-      # 2. PYTHON SURGERY: Encoding-Safe Injection [web:225][web:257]
+      # IMPORTANT: this format avoids YAML parser issues around multiline python blocks [web:330]
       - name: Python Surgery
-        shell: python
         run: |
+          python3 - <<'PY'
           import os
 
-          # HANDLER INJECTION BLOCKS
-          interceptor = """
-- (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
-    NSString *suggested = downloadTask.response.suggestedFilename ?: @"export";
-    NSString *name = [[suggested stringByDeletingPathExtension] stringByAppendingPathExtension:@"tendies"];
-    NSURL *docs = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL *dest = [docs URLByAppendingPathComponent:name];
-    [[NSFileManager defaultManager] moveItemAtURL:location toURL:dest error:nil];
-}
-"""
-          handler = """
-- (void)download:(nonnull WKDownload *)download decideDestinationUsingResponse:(nonnull NSURLResponse *)response suggestedFilename:(nonnull NSString *)suggestedFilename completionHandler:(nonnull void (^)(NSURL * _Nullable))completionHandler {
-    NSString *fixedName = [[suggestedFilename stringByDeletingPathExtension] stringByAppendingPathExtension:@"tendies"];
-    NSURL *documentsDir = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL *url = [documentsDir URLByAppendingPathComponent:fixedName];
-    completionHandler(url);
-}
-"""
+          interceptor = r'''
+          - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
+              NSString *suggested = downloadTask.response.suggestedFilename ?: @"export";
+              NSString *name = [[suggested stringByDeletingPathExtension] stringByAppendingPathExtension:@"tendies"];
+              NSURL *docs = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+              NSURL *dest = [docs URLByAppendingPathComponent:name];
+              [[NSFileManager defaultManager] moveItemAtURL:location toURL:dest error:nil];
+          }
+          '''
 
-          for root, dirs, files in os.walk('ios'):
-              for file in files:
-                  fpath = os.path.join(root, file)
-                  if file.endswith(('.m', '.h', '.swift', '.pbxproj', '.plist')):
-                      try:
-                          with open(fpath, 'rb') as f:
-                              content = f.read().decode('utf-8', 'ignore')
-                          
-                          # 1. SCRUB FILENAMES
-                          new_content = content.replace('stringByAppendingPathExtension:@"zip"', 'stringByAppendingPathExtension:@"tendies"')
-                          new_content = new_content.replace('@"zip"', '@"tendies"').replace('application/zip', 'application/tendies')
-                          
-                          # 2. PROJECT FIXES
-                          if file == 'project.pbxproj':
-                              new_content = '\n'.join([l for l in new_content.split('\n') if 'GoogleService-Info.plist' not in l])
-                              new_content = new_content.replace('SDKROOT = iphonesimulator', 'SDKROOT = iphoneos')
+          handler = r'''
+          - (void)download:(nonnull WKDownload *)download decideDestinationUsingResponse:(nonnull NSURLResponse *)response suggestedFilename:(nonnull NSString *)suggestedFilename completionHandler:(nonnull void (^)(NSURL * _Nullable))completionHandler {
+              NSString *fixedName = [[suggestedFilename stringByDeletingPathExtension] stringByAppendingPathExtension:@"tendies"];
+              NSURL *documentsDir = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+              NSURL *url = [documentsDir URLByAppendingPathComponent:fixedName];
+              completionHandler(url);
+          }
+          '''
 
-                          # 3. INTERCEPTOR & DEBUG MODE [web:180][web:197]
-                          if file == 'LEANWebViewController.m' and 'tendies' not in new_content:
-                              new_content = new_content.replace('@end', f"{interceptor}\n{handler}\n@end")
-                              debug_inject = 'if (@available(iOS 16.4, *)) { [self.wkWebview setInspectable:YES]; }'
-                              new_content = new_content.replace('[self switchToWebView:wv showImmediately:NO];', f'[self switchToWebView:wv showImmediately:NO]; {debug_inject}')
+          root_dir = "ios"
+          for root, _, files in os.walk(root_dir):
+              for fn in files:
+                  if not fn.endswith((".m", ".h", ".swift", ".pbxproj", ".plist")):
+                      continue
+                  path = os.path.join(root, fn)
 
-                          if new_content != content:
-                              with open(fpath, 'w', encoding='utf-8') as f:
-                                  f.write(new_content)
-                      except Exception as e:
-                          print(f"Skipping {file}: {e}")
+                  data = open(path, "rb").read()
+                  text = data.decode("utf-8", "ignore")
 
-      # 3. IDENTITY PATCH (FILES APP ACCESS) [memory:18]
+                  new_text = text
+                  new_text = new_text.replace('stringByAppendingPathExtension:@"zip"', 'stringByAppendingPathExtension:@"tendies"')
+                  new_text = new_text.replace('@"zip"', '@"tendies"')
+                  new_text = new_text.replace("application/zip", "application/tendies")
+
+                  if fn == "project.pbxproj":
+                      new_text = "\n".join([l for l in new_text.splitlines() if "GoogleService-Info.plist" not in l])
+                      new_text = new_text.replace("SDKROOT = iphonesimulator", "SDKROOT = iphoneos")
+
+                  if fn == "LEANWebViewController.m" and "setInspectable" not in new_text:
+                      # safer: only inject debug if method exists; avoids compile errors on older SDKs [web:197]
+                      debug = r'''
+          if (@available(iOS 16.4, *)) {
+              if ([self.wkWebview respondsToSelector:@selector(setInspectable:)]) {
+                  [self.wkWebview performSelector:@selector(setInspectable:) withObject:@YES];
+              }
+          }
+                      '''
+                      new_text = new_text.replace("@end", f"{interceptor}\n{handler}\n@end")
+                      new_text = new_text.replace("[self switchToWebView:wv showImmediately:NO];",
+                                                  "[self switchToWebView:wv showImmediately:NO];\n" + debug)
+
+                  if new_text != text:
+                      open(path, "w", encoding="utf-8").write(new_text)
+          PY
+
       - name: Apply Identity Patch
         run: |
           cd ios
-          PLIST=$(find . -name "Info.plist" | head -n 1)
+          PLIST="$(find . -name Info.plist | head -n 1)"
           if [ -n "$PLIST" ]; then
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" || true
             /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" || true
           fi
 
-      # 4. BUILD APP (NO-SIGNING BYPASS) [web:277][web:289]
-      - name: Build App
+      - name: Build App (no signing)
         run: |
           cd ios
-          WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
-          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')
-          
+          WORKSPACE="$(find . -maxdepth 1 -name '*.xcworkspace' | head -n 1)"
+          SCHEME="$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1; next} flag{print $1; exit}')"
           xcodebuild build \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -107,19 +113,18 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             COMPILER_INDEX_STORE_ENABLE=NO
 
-      # 5. PACKAGE IPA (FOR LIVECONTAINER) [image:215]
       - name: Package IPA
         run: |
           cd ios
-          mkdir Payload
-          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
+          rm -rf Payload
+          mkdir -p Payload
+          APP_PATH="$(find build/Build/Products/Release-iphoneos -name '*.app' | head -n 1)"
           cp -r "$APP_PATH" Payload/
-          rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature"
-          zip -r -y -X "CAPlayground_Tendies.ipa" Payload
+          rm -rf "Payload/$(basename "$APP_PATH")/_CodeSignature" || true
+          /usr/bin/zip -r -y -X CAPlayground_Tendies.ipa Payload
 
-      # 6. UPLOAD
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CAPlayground-Final-Fixed
+          name: CAPlayground
           path: ios/CAPlayground_Tendies.ipa
